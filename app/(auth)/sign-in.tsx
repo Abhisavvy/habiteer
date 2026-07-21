@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+import * as QueryParams from "expo-auth-session/build/QueryParams";
 import { supabase } from "@/lib/supabase/client";
 import { theme } from "@/constants/theme";
+
+WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_REDIRECT_TO = "habiteer://";
 
 /** Email/password sign-in & sign-up, plus Google OAuth. */
 export default function SignIn() {
@@ -11,18 +17,39 @@ export default function SignIn() {
 
   const withEmail = async (mode: "in" | "up") => {
     setBusy(true);
-    const fn = mode === "in" ? supabase.auth.signInWithPassword : supabase.auth.signUp;
-    const { error } = await fn({ email, password });
-    setBusy(false);
-    if (error) Alert.alert("Sign-in failed", error.message);
+    try {
+      const { error } =
+        mode === "in"
+          ? await supabase.auth.signInWithPassword({ email, password })
+          : await supabase.auth.signUp({ email, password });
+      if (error) Alert.alert("Sign-in failed", error.message);
+      else if (mode === "up") {
+        Alert.alert("Check your email", "We sent a confirmation link — tap it, then sign in.");
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const withGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: "habiteer://" },
+      options: { redirectTo: GOOGLE_REDIRECT_TO, skipBrowserRedirect: true },
     });
-    if (error) Alert.alert("Google sign-in failed", error.message);
+    if (error) return Alert.alert("Google sign-in failed", error.message);
+    if (!data?.url) return;
+
+    const result = await WebBrowser.openAuthSessionAsync(data.url, GOOGLE_REDIRECT_TO);
+    if (result.type !== "success" || !result.url) return;
+
+    const { params, errorCode } = QueryParams.getQueryParams(result.url);
+    if (errorCode) return Alert.alert("Google sign-in failed", errorCode);
+
+    const { access_token, refresh_token } = params;
+    if (!access_token || !refresh_token) return;
+
+    const { error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token });
+    if (sessionError) Alert.alert("Google sign-in failed", sessionError.message);
   };
 
   return (

@@ -12,23 +12,32 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "expo": "*",
-    "expo-router": "*",
-    "expo-secure-store": "*",
-    "expo-auth-session": "*",
-    "expo-web-browser": "*",
-    "react": "*",
-    "react-native": "*",
+    "@expo/metro-runtime": "~6.1.2",
     "@supabase/supabase-js": "*",
-    "zustand": "*",
     "@tanstack/react-query": "*",
-    "zod": "*"
+    "@types/react": "~19.1.10",
+    "expo": "~54.0.36",
+    "expo-auth-session": "~7.0.11",
+    "expo-constants": "~18.0.13",
+    "expo-router": "~6.0.24",
+    "expo-secure-store": "~15.0.8",
+    "expo-web-browser": "~15.0.11",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-screens": "4.16.0",
+    "react-native-url-polyfill": "*",
+    "react-native-web": "^0.21.2",
+    "zod": "*",
+    "zustand": "*"
   },
   "devDependencies": {
     "typescript": "*",
     "vitest": "*",
     "drizzle-orm": "*",
     "drizzle-kit": "*",
-    "drizzle-zod": "*"
+    "drizzle-zod": "*",
+    "pg": "*",
+    "dotenv": "*"
   }
 }
