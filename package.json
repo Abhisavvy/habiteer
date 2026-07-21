@@ -9,7 +9,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "db:gen-sql": "tsx scripts/gen-sql-constants.ts",
+    "db:apply-sql": "tsx scripts/apply-sql.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -32,12 +34,13 @@
     "zustand": "*"
   },
   "devDependencies": {
-    "typescript": "*",
-    "vitest": "*",
-    "drizzle-orm": "*",
+    "dotenv": "*",
     "drizzle-kit": "*",
+    "drizzle-orm": "*",
     "drizzle-zod": "*",
     "pg": "*",
-    "dotenv": "*"
+    "tsx": "^4.23.1",
+    "typescript": "*",
+    "vitest": "*"
   }
 }

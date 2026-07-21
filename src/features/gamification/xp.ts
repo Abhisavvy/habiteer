@@ -1,4 +1,4 @@
-import { DIFFICULTY_BASE, type Difficulty } from "./constants";
+import { DIFFICULTY_BASE, LEVEL_XP_BASE, LEVEL_XP_EXPONENT, type Difficulty } from "./constants";
 import { comboMultiplier } from "./combo";
 
 /** XP awarded for completing a habit at a given streak (combo applies). */
@@ -8,7 +8,7 @@ export function xpForHabit(difficulty: Difficulty, streak: number): number {
 
 /** XP required to clear a given level. */
 function reqFor(level: number): number {
-  return Math.round(100 * Math.pow(level, 1.3));
+  return Math.round(LEVEL_XP_BASE * Math.pow(level, LEVEL_XP_EXPONENT));
 }
 
 /**

@@ -53,6 +53,41 @@ Pending
 - Postgres RPCs (`fn_complete_trackable`, `fn_undo_completion`, `fn_redeem_reward`),
   validated against a local Postgres, mirroring the constants above (see `rpc.README.md`).
 
+## Phase 2 — Postgres RPCs (done)
+Done
+- `fn_complete_trackable`, `fn_undo_completion`, `fn_redeem_reward` implemented in
+  `src/lib/db/rpc.sql`, applied to the live dev DB via `npm run db:apply-sql`.
+  See `rpc.README.md` for exact return shapes and semantics.
+- Tuning constants generated into SQL from `src/features/gamification/constants.ts`
+  by `scripts/gen-sql-constants.ts` (`npm run db:gen-sql`) — never hand-copied, so
+  client projections and server truth can't drift (per CLAUDE.md/PLAN.md §6).
+  Required a small prep refactor: `LEVEL_XP_BASE`/`LEVEL_XP_EXPONENT` exported from
+  `constants.ts` (previously inlined literals in `xp.ts`'s private `reqFor`).
+- 14 new Vitest integration tests in `src/lib/db/__tests__/rpc.test.ts`, run against
+  the live dev Supabase project via a persistent test account (no local
+  Postgres/Docker available in this environment). All 26 tests (12 unit + 14
+  integration) green, run twice back-to-back to confirm test fixtures clean up
+  completely with no leftover rows.
+- Bundled fixes found while implementing:
+  - **No `profiles` row was ever created on sign-up** (no auth trigger existed) —
+    every `trackables`/`rewards` insert failed its FK constraint for *any* user,
+    not just tests. This would have blocked Phase 3 immediately. Fixed with the
+    standard Supabase `handle_new_user()` trigger on `auth.users`, plus a one-time
+    backfill for users created before the trigger existed (`rls.sql`).
+  - `profiles` had no RLS at all — any logged-in user could read/write anyone's
+    `display_name`/`avatar`. Added an owner-only policy alongside the above.
+  - No table's `check in (...)` constraints from PLAN.md §5's data-model docs were
+    ever actually implemented in `schema.ts` — descriptive comments only, not real
+    Postgres CHECK constraints. Added one for `coin_ledger.kind` (needed for the
+    `'undo'` value); the others (`trackables.kind`/`difficulty`, `rewards.kind`)
+    are still unconstrained at the DB level — flagged, not fixed, out of scope here.
+
+Known follow-ups (not blocking)
+- No advisory locking against concurrent double-complete/double-redeem races
+  (single-user v1 app, low-stakes; documented in `rpc.README.md`).
+- `trackables.kind`/`difficulty` and `rewards.kind` still have no real CHECK
+  constraint at the DB level (see above).
+
 ## Next
 - Phase 3: daily view (habits + tasks), add/edit/archive.
 - Phase 4: completion economy wired to RPCs (XP, coins, combo, level bar, freeze tokens).
@@ -60,4 +95,4 @@ Pending
 - v2: Android widget -> shared rewards/groups -> quota recurrence -> stats -> leagues -> cosmetics -> reduction mode.
 
 ## Bugs / blockers
-- None.
+- None blocking. See "Known follow-ups" above for accepted v1 gaps.

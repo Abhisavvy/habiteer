@@ -12,3 +12,7 @@ export const COMBO_TIERS = [
   { min: 7, mult: 1.5 },
   { min: 3, mult: 1.2 },
 ] as const;
+
+/** Level curve: reqFor(level) = round(LEVEL_XP_BASE * level^LEVEL_XP_EXPONENT). */
+export const LEVEL_XP_BASE = 100;
+export const LEVEL_XP_EXPONENT = 1.3;
