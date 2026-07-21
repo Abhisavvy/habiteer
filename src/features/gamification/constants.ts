@@ -1,0 +1,14 @@
+/** Base value per difficulty. Habit XP base and default coin value both use this. */
+export const DIFFICULTY_BASE = { easy: 10, medium: 20, hard: 35 } as const;
+export type Difficulty = keyof typeof DIFFICULTY_BASE;
+
+/** Tasks (one-off) pay this fraction of a same-effort habit's base coins. */
+export const TASK_COIN_DISCOUNT = 0.75;
+
+/** Streak combo tiers (in satisfied periods). Applies to XP only. */
+export const COMBO_TIERS = [
+  { min: 30, mult: 3 },
+  { min: 14, mult: 2 },
+  { min: 7, mult: 1.5 },
+  { min: 3, mult: 1.2 },
+] as const;

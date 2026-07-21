@@ -1,0 +1,59 @@
+import { pgTable, uuid, text, integer, timestamp, date, unique } from "drizzle-orm/pg-core";
+
+export const profiles = pgTable("profiles", {
+  id: uuid("id").primaryKey(), // == auth.users.id
+  displayName: text("display_name").notNull(),
+  avatar: text("avatar").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const trackables = pgTable("trackables", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => profiles.id),
+  kind: text("kind").notNull(), // 'habit' | 'task'
+  name: text("name").notNull(),
+  emoji: text("emoji").notNull(),
+  difficulty: text("difficulty").notNull(), // 'easy' | 'medium' | 'hard'
+  coinValue: integer("coin_value").notNull(),
+  period: text("period"), // habits: 'day' (v1); 'week'|'month' (v2)
+  quota: integer("quota").notNull().default(1),
+  weekdays: integer("weekdays").array(), // 0-6, for specific-weekday habits
+  archivedAt: timestamp("archived_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const completions = pgTable(
+  "completions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    trackableId: uuid("trackable_id").notNull().references(() => trackables.id),
+    userId: uuid("user_id").notNull().references(() => profiles.id),
+    completedOn: date("completed_on").notNull(),
+    xpEarned: integer("xp_earned").notNull(),
+    coinsEarned: integer("coins_earned").notNull(),
+    streakAfter: integer("streak_after").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({ oncePerDay: unique().on(t.trackableId, t.completedOn) })
+);
+
+export const coinLedger = pgTable("coin_ledger", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => profiles.id),
+  delta: integer("delta").notNull(),
+  kind: text("kind").notNull(), // 'earn' | 'redeem' | 'contribute'
+  refId: uuid("ref_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const rewards = pgTable("rewards", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  kind: text("kind").notNull(), // 'personal' | 'shared'
+  name: text("name").notNull(),
+  emoji: text("emoji").notNull(),
+  cost: integer("cost").notNull(),
+  userId: uuid("user_id").references(() => profiles.id), // personal owner
+  groupId: uuid("group_id"), // shared (v2)
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
