@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
 import { beforeAll, describe, it, expect } from "vitest";
-import { comboMultiplier } from "../../../features/gamification/combo";
-import { taskCoins } from "../../../features/gamification/coins";
+import { comboMultiplier } from "@/features/gamification/combo";
+import { taskCoins } from "@/features/gamification/coins";
 import {
   testClient,
   signInTestUser,

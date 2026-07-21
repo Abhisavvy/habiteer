@@ -88,8 +88,41 @@ Known follow-ups (not blocking)
 - `trackables.kind`/`difficulty` and `rewards.kind` still have no real CHECK
   constraint at the DB level (see above).
 
+## Phase 3 — Trackables: daily view + add/edit/archive (done)
+Done
+- `app/index.tsx` replaced the placeholder with the real daily view: habits +
+  tasks in one list, add/edit via an inline panel (`TrackablePanel`), archive
+  via an X icon (soft-delete, `archived_at`).
+- `src/features/trackables/`: `api.ts` (plain Supabase CRUD, RLS-protected,
+  no RPC needed — RPCs are only for the completion economy), `schemas.ts`
+  (drizzle-zod validation — first real use of that locked architecture
+  decision), `useTrackables.ts` (TanStack Query — also first real use;
+  `QueryClientProvider` added to `app/_layout.tsx`), `today.ts` (pure
+  due-today filter, built test-first, reuses the existing tested `weekday()`
+  helper from the gamification lib).
+- Scheduling UI beyond the old prototype: "Every day" vs "Specific days"
+  toggle + a 7-day multi-select for habits; tasks get no scheduling UI.
+- Added `lucide-react-native` + `react-native-svg` for icons (Pencil/X/Plus/
+  LogOut), matching the prototype's icon set.
+- Scope check confirmed with the user: no check/complete button yet — every
+  card always shows a streak-0 projection. That's Phase 4's job (wiring the
+  already-built RPCs to a real check button + XP/level bar).
+- Fixed the `@/` path-alias not resolving under Vitest (only Metro understood
+  it) — added `resolve.alias` to `vitest.config.ts`, benefits every test file
+  going forward, not just this phase's.
+- 3 new Vitest tests for `filterDueToday` (29 total, all green); `tsc --noEmit`
+  clean project-wide.
+- Verified live on device: add (daily + specific-weekday habit + task), edit,
+  archive all confirmed working by the user.
+
+Known follow-ups (not blocking)
+- No unarchive UI (matches confirmed v1 scope; archived rows still exist in
+  the DB, just not reachable from the app).
+- Editable `coin_value` resets to the difficulty default whenever the effort
+  button is tapped in the add/edit panel (simplest predictable behavior for
+  v1; a user who wants a custom value picks effort first, then edits coins).
+
 ## Next
-- Phase 3: daily view (habits + tasks), add/edit/archive.
 - Phase 4: completion economy wired to RPCs (XP, coins, combo, level bar, freeze tokens).
 - Phase 5: personal rewards + basic weekly leaderboard.
 - v2: Android widget -> shared rewards/groups -> quota recurrence -> stats -> leagues -> cosmetics -> reduction mode.
