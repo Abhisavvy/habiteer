@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import type { SharedReward } from "../api";
 
 export function SharedRewardCard({
@@ -85,8 +86,8 @@ const styles = StyleSheet.create({
   },
   emoji: { fontSize: 22 },
   body: { flex: 1, minWidth: 0 },
-  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink },
-  cost: { fontSize: 12, fontWeight: "700", color: theme.color.ink, marginTop: 2 },
+  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display600 },
+  cost: { fontSize: 12, fontWeight: "700", color: theme.color.ink, marginTop: 2, fontFamily: fonts.mono700 },
   unlockedBadge: {
     fontSize: 11,
     fontWeight: "800",

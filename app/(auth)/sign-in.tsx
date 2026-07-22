@@ -5,6 +5,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as QueryParams from "expo-auth-session/build/QueryParams";
 import { supabase } from "@/lib/supabase/client";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -95,7 +96,7 @@ export default function SignIn() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: "center", padding: 24, gap: 12, backgroundColor: theme.color.paper },
-  logo: { fontSize: 34, fontWeight: "800", color: theme.color.ink, marginBottom: 12 },
+  logo: { fontSize: 34, fontWeight: "800", color: theme.color.ink, marginBottom: 12, fontFamily: fonts.display700 },
   input: { borderWidth: theme.border, borderColor: theme.color.ink, borderRadius: 10,
     padding: 12, backgroundColor: "#fff", fontSize: 16, color: theme.color.ink },
   passwordWrap: { position: "relative" },

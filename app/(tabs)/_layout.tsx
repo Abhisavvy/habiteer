@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import { Check, Gift, Trophy, Users } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import { useWidgetSync } from "@/features/widget/useWidgetSync";
 
 export default function TabsLayout() {
@@ -13,7 +14,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: theme.color.violet,
         tabBarInactiveTintColor: theme.color.ink,
         tabBarStyle: { backgroundColor: theme.color.card, borderTopColor: theme.color.ink },
-        tabBarLabelStyle: { fontWeight: "700", fontSize: 11 },
+        tabBarLabelStyle: { fontWeight: "700", fontSize: 11, fontFamily: fonts.display600 },
       }}
     >
       <Tabs.Screen

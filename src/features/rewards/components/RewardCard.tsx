@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Pencil, X } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import type { Reward } from "../api";
 
 export function RewardCard({
@@ -68,10 +69,10 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 22 },
   body: { flex: 1, minWidth: 0 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink, flexShrink: 1 },
+  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink, flexShrink: 1, fontFamily: fonts.display600 },
   actions: { flexDirection: "row", gap: 4 },
   iconBtn: { width: 24, height: 24, alignItems: "center", justifyContent: "center", borderRadius: 6 },
-  cost: { fontSize: 12, fontWeight: "700", color: theme.color.ink, marginTop: 4 },
+  cost: { fontSize: 12, fontWeight: "700", color: theme.color.ink, marginTop: 4, fontFamily: fonts.mono700 },
   redeemBtn: {
     borderWidth: theme.border,
     borderColor: theme.color.ink,

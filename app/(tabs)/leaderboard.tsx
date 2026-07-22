@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
 import { Trophy } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/features/auth/useAuth";
 import { useLeaderboardQuery } from "@/features/leaderboard/useLeaderboard";
 
@@ -56,7 +57,7 @@ const styles = StyleSheet.create({
     paddingTop: 54,
     paddingBottom: 14,
   },
-  title: { fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: 0.5 },
+  title: { fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: 0.5, fontFamily: fonts.display700 },
   statBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -82,9 +83,9 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   rowYou: { backgroundColor: theme.color.yellow },
-  rank: { fontWeight: "700", fontSize: 15, color: theme.color.ink, width: 22 },
-  name: { fontWeight: "700", fontSize: 15, color: theme.color.ink, flex: 1 },
-  xp: { fontWeight: "700", fontSize: 15, color: theme.color.ink },
+  rank: { fontWeight: "700", fontSize: 15, color: theme.color.ink, width: 22, fontFamily: fonts.mono700 },
+  name: { fontWeight: "700", fontSize: 15, color: theme.color.ink, flex: 1, fontFamily: fonts.display600 },
+  xp: { fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.mono700 },
   error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
   note: { fontSize: 12, fontWeight: "600", color: theme.color.ink, opacity: 0.6, lineHeight: 18 },
 });

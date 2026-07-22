@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Animated, Easing } from "react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 
 export function LevelUpOverlay({ level, onClose }: { level: number; onClose: () => void }) {
   const spin = useRef(new Animated.Value(0)).current;
@@ -53,7 +54,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   burst: { fontSize: 40 },
-  title: { fontWeight: "800", fontSize: 26, letterSpacing: 1, color: theme.color.ink },
+  title: { fontWeight: "800", fontSize: 26, letterSpacing: 1, color: theme.color.ink, fontFamily: fonts.display700 },
   num: {
     fontWeight: "700",
     fontSize: 16,
@@ -63,5 +64,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 8,
     marginTop: 4,
+    fontFamily: fonts.mono700,
   },
 });

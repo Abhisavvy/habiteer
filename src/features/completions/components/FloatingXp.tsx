@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Text, StyleSheet } from "react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 
 type Float = { id: string; amount: number };
 
@@ -63,6 +64,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 15,
     color: theme.color.ink,
+    fontFamily: fonts.mono700,
     backgroundColor: theme.color.jade,
     borderWidth: 2,
     borderColor: theme.color.ink,

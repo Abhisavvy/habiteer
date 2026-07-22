@@ -2,6 +2,7 @@ import { useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { Plus } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import { useCoinBalanceQuery } from "@/features/completions/useCompletions";
 import {
   useRewardsQuery,
@@ -107,7 +108,7 @@ const styles = StyleSheet.create({
     paddingTop: 54,
     paddingBottom: 14,
   },
-  title: { fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: 0.5 },
+  title: { fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: 0.5, fontFamily: fonts.display700 },
   statBadge: {
     borderWidth: 2,
     borderColor: theme.color.ink,
@@ -116,7 +117,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     backgroundColor: theme.color.card,
   },
-  statText: { fontWeight: "700", fontSize: 13, color: theme.color.ink },
+  statText: { fontWeight: "700", fontSize: 13, color: theme.color.ink, fontFamily: fonts.mono700 },
   scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
   list: { gap: 12 },
   error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },

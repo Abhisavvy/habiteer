@@ -8,10 +8,19 @@ const config: ExpoConfig = {
   name: "Habiteer",
   slug: "habiteer",
   scheme: "habiteer", // deep-link scheme for OAuth redirect
-  android: { package: "com.habiteer.app" },
+  icon: "./assets/icon.png",
+  android: {
+    package: "com.habiteer.app",
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon-foreground.png",
+      backgroundImage: "./assets/adaptive-icon-background.png",
+      monochromeImage: "./assets/adaptive-icon-monochrome.png",
+    },
+  },
   plugins: [
     "expo-router",
     "expo-secure-store",
+    "expo-font",
     [
       "react-native-android-widget",
       {

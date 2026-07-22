@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert
 import { Plus, LogOut, Snowflake } from "lucide-react-native";
 import { useAuth } from "@/features/auth/useAuth";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import { useTrackablesQuery, useCreateTrackable, useUpdateTrackable, useArchiveTrackable } from "@/features/trackables/useTrackables";
 import { filterDueToday, today } from "@/features/trackables/today";
 import { TrackableCard } from "@/features/trackables/components/TrackableCard";
@@ -178,7 +179,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  logo: { fontSize: 22, fontWeight: "800", color: theme.color.ink, letterSpacing: -0.5 },
+  logo: { fontSize: 22, fontWeight: "800", color: theme.color.ink, letterSpacing: -0.5, fontFamily: fonts.display700 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 6 },
   statBadge: {
     flexDirection: "row",
@@ -191,7 +192,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     backgroundColor: theme.color.card,
   },
-  statText: { fontWeight: "700", fontSize: 12, color: theme.color.ink },
+  statText: { fontWeight: "700", fontSize: 12, color: theme.color.ink, fontFamily: fonts.mono700 },
   signOutBtn: {
     width: 30,
     height: 30,

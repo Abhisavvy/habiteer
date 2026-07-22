@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert
 import { useLocalSearchParams, router } from "expo-router";
 import { ArrowLeft, Plus } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import { useCompletionsQuery } from "@/features/completions/useCompletions";
 import { overallProgress } from "@/features/completions/derived";
 import { useGroupDetailQuery } from "@/features/groups/useGroups";
@@ -136,7 +137,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: theme.color.card,
   },
-  title: { flex: 1, fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: 0.5 },
+  title: { flex: 1, fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: 0.5, fontFamily: fonts.display700 },
   scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 18 },
   error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
   codeCard: {
@@ -151,7 +152,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   codeLabel: { fontWeight: "700", fontSize: 13, color: "#fff", opacity: 0.85 },
-  codeValue: { fontWeight: "800", fontSize: 20, color: "#fff", letterSpacing: 2 },
+  codeValue: { fontWeight: "800", fontSize: 20, color: "#fff", letterSpacing: 2, fontFamily: fonts.mono700 },
   section: { gap: 10 },
   sectionTitle: { fontSize: 13, fontWeight: "800", color: theme.color.ink, opacity: 0.6, letterSpacing: 0.5 },
   memberRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

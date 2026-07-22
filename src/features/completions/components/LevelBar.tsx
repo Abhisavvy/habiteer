@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet } from "react-native";
 import { Zap } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 
 export function LevelBar({ level, intoLevel, need }: { level: number; intoLevel: number; need: number }) {
   const pct = Math.min(100, need > 0 ? (intoLevel / need) * 100 : 100);
@@ -33,7 +34,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  chipText: { color: theme.color.yellow, fontWeight: "800", fontSize: 12 },
+  chipText: { color: theme.color.yellow, fontWeight: "800", fontSize: 12, fontFamily: fonts.mono700 },
   trackWrap: { flex: 1 },
   track: {
     height: 14,

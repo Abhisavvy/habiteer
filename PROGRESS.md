@@ -391,20 +391,67 @@ Known follow-ups (not blocking)
   (e.g. a calendar view) — only the current period's live progress and the
   running streak count are shown.
 
-## Now: UX/UI polish pass (design-led, separate track)
-User is redesigning app + widget visuals (including a real app icon —
-there's never been one, still Expo's default placeholder) in a separate
-design tool, working from a requirements brief Claude produced covering
-current design-system tokens, per-screen requirements, widget constraints,
-and a sounds/haptics interaction spec (spec'd now, implementation deferred
-to a later pass — confirmed with user, not part of this round). Development
-continues in parallel on the v2 roadmap below; visual changes land whenever
-the design pass is ready to hand off, not blocking other v2 work.
+## v2 UX/UI redesign — Phase A: app icon, fonts, splash (done)
+The design brief from the earlier "Now: UX/UI polish pass" came back as a
+full redesign deliverable (`Habiteer Design - shareable.html`) covering the
+app icon, every existing screen restyled, and three new
+screens/systems (Profile, a shared modal shell, redeem/level-up
+celebrations). It's large enough to span several phases (A–E); this session
+shipped Phase A. See the plan file referenced in PROGRESS for the full
+phase breakdown and the gaps/inconsistencies found while reviewing the
+deliverable (Groups/shared-rewards screens and week/month habit cards have
+zero design coverage since the design predates both; "longest streak" for
+the upcoming Profile screen needs new forward-scanning logic, not a wire-up).
+
+Done
+- **App icon — direction 1d, "Level-up H"** (user's explicit pick over the
+  designer's recommended 1a checkmark badge): violet `#7B5CFF` background,
+  ink monogram with the right stroke taller ("ascending"), a yellow
+  `#FFD23F` cap on the taller stroke, rounded corners, sized down 5% per
+  on-device feedback. Generated via a hand-written Node PNG encoder
+  (`zlib.deflateSync` + CRC32, same approach as the widget-picker
+  placeholder) with 4x supersample anti-aliasing and the standard
+  rounded-box signed-distance function for the corners — verified alpha
+  transparency on the foreground/monochrome layers by inspecting raw pixel
+  bytes, not just the visual preview. Wired into `app.config.ts`
+  (`icon`, `android.adaptiveIcon.{foregroundImage,backgroundImage,
+  monochromeImage}`), replacing Expo's default placeholder that every build
+  so far had shipped with.
+- **Bundled fonts**: `@expo-google-fonts/space-grotesk` +
+  `@expo-google-fonts/space-mono` (ship real `.ttf` files — the `.woff2`
+  files fetched earlier for the design-brief artifact were web-only and
+  wouldn't load via `expo-font` on Android). New `src/constants/fonts.ts`
+  with named tokens (`display700`/`display600` for Grotesk,
+  `mono700` for Space Mono), applied per the design's own spec — headings/
+  wordmark, card titles/tab labels, and every number (XP, coins, streaks,
+  ranks, invite codes) across every screen; body/error/empty-state copy
+  stays on the system font as specified.
+- **Splash**: adapted the design's checkmark-specific "stroke draws on"
+  concept to the H direction actually shipped — the two bars rise into
+  place (`scaleY`, staggered), then the yellow cap pops in with a spring,
+  then fades to reveal the app (`src/components/AppSplash.tsx` — this
+  session's first cross-feature shared component, same location Phase C's
+  modal shell will use). Respects reduce-motion: falls back to a static
+  render of the same icon, no animation, per the design's own note.
+- `npx tsc --noEmit` clean; existing 74 tests unaffected (visual/config
+  phase, no logic changes). Verified live on device: real icon on the
+  home screen (rounded, correctly sized after feedback), fonts rendering
+  correctly across Today/Rewards/Groups/Leaderboard, splash plays on cold
+  start.
+
+Known follow-ups (not blocking)
+- Phases B–E (Today/panel restyle, 5-tab HUD + Profile + modal system,
+  Rewards celebration + Leaderboard redesign, overlay polish + widget dark
+  mode) not started — each gets its own confirmation before starting, per
+  the approved plan.
+- Reduce-motion fallback verified in code review, not device-tested against
+  the actual Android "Remove animations" setting.
 
 ## Next
-- v2, in priority order per PLAN.md §13: gamified stats page (next) →
-  league tiers → cosmetics/unlocks → reduction mode.
-- Sounds/haptics implementation (spec'd in the UX brief above, not yet built).
+- Continue the v2 UX/UI redesign: Phase B (Today screen + add/edit panel).
+- v2 roadmap per PLAN.md §13, once the redesign phases land: gamified stats
+  page → league tiers → cosmetics/unlocks → reduction mode.
+- Sounds/haptics implementation (spec'd in the UX brief, not yet built).
 
 ## Bugs / blockers
 - None blocking. See "Known follow-ups" above for accepted v1/v2 gaps.

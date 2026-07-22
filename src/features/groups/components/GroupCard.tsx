@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Users, ChevronRight } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import type { Group } from "../api";
 
 export function GroupCard({ group, onPress }: { group: Group; onPress: () => void }) {
@@ -42,6 +43,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.violet,
   },
   body: { flex: 1, minWidth: 0 },
-  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink },
-  code: { fontSize: 12, fontWeight: "700", color: theme.color.ink, opacity: 0.6, marginTop: 2 },
+  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display600 },
+  code: { fontSize: 12, fontWeight: "700", color: theme.color.ink, opacity: 0.6, marginTop: 2, fontFamily: fonts.mono700 },
 });

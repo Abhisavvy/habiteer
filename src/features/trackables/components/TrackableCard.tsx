@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Pencil, X, Check, Flame } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import { xpForHabit } from "@/features/gamification/xp";
 import { taskCoins } from "@/features/gamification/coins";
 import { comboMultiplier } from "@/features/gamification/combo";
@@ -135,7 +136,7 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 22 },
   body: { flex: 1, minWidth: 0 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink, flexShrink: 1 },
+  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink, flexShrink: 1, fontFamily: fonts.display600 },
   actions: { flexDirection: "row", gap: 4 },
   iconBtn: { width: 24, height: 24, alignItems: "center", justifyContent: "center", borderRadius: 6 },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 6, flexWrap: "wrap" },
@@ -167,7 +168,7 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     backgroundColor: "#fff",
   },
-  streakText: { fontSize: 11, fontWeight: "700", color: theme.color.ink },
+  streakText: { fontSize: 11, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.mono700 },
   progressBadge: {
     borderWidth: 2,
     borderColor: theme.color.ink,
@@ -176,9 +177,9 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     backgroundColor: theme.color.yellow,
   },
-  progressText: { fontSize: 11, fontWeight: "700", color: theme.color.ink },
+  progressText: { fontSize: 11, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.mono700 },
   combo: { fontSize: 11, fontWeight: "700", color: theme.color.violet },
-  payout: { marginLeft: "auto", fontSize: 12, fontWeight: "700", color: theme.color.ink },
+  payout: { marginLeft: "auto", fontSize: 12, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.mono700 },
   checkBtn: {
     width: 44,
     height: 44,
