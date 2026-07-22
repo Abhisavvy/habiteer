@@ -116,6 +116,59 @@ export async function getFreezeBalance(): Promise<number> {
   return data?.balance ?? 0;
 }
 
+/** Bumps total XP (and thus level) via a throwaway habit's history — for
+ * tests that need to clear a level-gate (e.g. level 3 to create a group). */
+export async function seedXp(amount: number): Promise<{ trackableId: string; cleanup: () => Promise<void> }> {
+  const t = await makeTrackable({ kind: "habit", name: "xp-funding" });
+  await seedHistoricalCompletion(t.id, todayUTC(-100), amount, 0, 0);
+  return { trackableId: t.id, cleanup: () => cleanupTrackable(t.id) };
+}
+
+/** A second, independent signed-up user — for group-membership / RLS tests
+ * that need two real accounts. Returns a signed-in client + their user id. */
+export async function makeOtherUser() {
+  const email = `habiteer.rpctest.other.${Date.now()}.${Math.random().toString(36).slice(2)}@gmail.com`;
+  const password = "OtherUser!2026Habiteer";
+  const otherClient = createClient(process.env.EXPO_PUBLIC_SUPABASE_URL!, process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!);
+  const { error } = await otherClient.auth.signUp({ email, password });
+  if (error) throw error;
+  const { data: userData } = await otherClient.auth.getUser();
+  return { client: otherClient, userId: userData.user!.id };
+}
+
+export async function makeGroup(name: string) {
+  const { data: userData } = await testClient.auth.getUser();
+  const inviteCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const { data, error } = await testClient
+    .from("groups")
+    .insert({ name: `[TEST] ${name}`, invite_code: inviteCode, created_by: userData.user!.id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as { id: string; invite_code: string; [key: string]: unknown };
+}
+
+export async function cleanupGroup(id: string) {
+  await testClient.from("group_members").delete().eq("group_id", id);
+  await testClient.from("groups").delete().eq("id", id);
+}
+
+export async function makeSharedReward(groupId: string, cost: number) {
+  const { data, error } = await testClient
+    .from("rewards")
+    .insert({ kind: "shared", group_id: groupId, name: "[TEST] shared reward", emoji: "🎁", cost })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as { id: string; [key: string]: unknown };
+}
+
+export async function cleanupSharedReward(id: string) {
+  await testClient.from("coin_ledger").delete().eq("ref_id", id);
+  await testClient.from("reward_contributions").delete().eq("reward_id", id);
+  await testClient.from("rewards").delete().eq("id", id);
+}
+
 /** Inserts a completions row directly, bypassing the RPC — for seeding streak history. */
 export async function seedHistoricalCompletion(
   trackableId: string,

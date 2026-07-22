@@ -75,3 +75,73 @@ export async function redeemReward(id: string): Promise<{ balance: number }> {
   if (error) throw error;
   return { balance: data.balance };
 }
+
+export type SharedReward = {
+  id: string;
+  groupId: string;
+  name: string;
+  emoji: string;
+  cost: number;
+  completedAt: string | null;
+  createdAt: string;
+  totalContributed: number;
+};
+
+/** reward_contributions is embedded via PostgREST's FK-based join and summed client-side —
+ * one round trip instead of a separate aggregate query per reward. */
+function mapSharedRow(row: Record<string, unknown>): SharedReward {
+  const contributions = (row.reward_contributions as Array<{ amount: number }> | null) ?? [];
+  return {
+    id: row.id as string,
+    groupId: row.group_id as string,
+    name: row.name as string,
+    emoji: row.emoji as string,
+    cost: row.cost as number,
+    completedAt: row.completed_at as string | null,
+    createdAt: row.created_at as string,
+    totalContributed: contributions.reduce((sum, c) => sum + c.amount, 0),
+  };
+}
+
+export async function fetchSharedRewards(groupId: string): Promise<SharedReward[]> {
+  const { data, error } = await supabase
+    .from("rewards")
+    .select("*, reward_contributions(amount)")
+    .eq("group_id", groupId)
+    .eq("kind", "shared")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data.map(mapSharedRow);
+}
+
+export async function createSharedReward(groupId: string, values: RewardFormValues): Promise<SharedReward> {
+  const parsed = insertRewardSchema.parse(values);
+  const { data, error } = await supabase
+    .from("rewards")
+    .insert({
+      kind: "shared",
+      group_id: groupId,
+      user_id: null,
+      name: parsed.name,
+      emoji: parsed.emoji,
+      cost: parsed.cost,
+    })
+    .select("*, reward_contributions(amount)")
+    .single();
+  if (error) throw error;
+  return mapSharedRow(data);
+}
+
+export async function contributeToReward(
+  rewardId: string,
+  amount: number
+): Promise<{ contributed: number; totalContributed: number; remainingBalance: number; unlocked: boolean }> {
+  const { data, error } = await supabase.rpc("fn_contribute_to_reward", { p_reward_id: rewardId, p_amount: amount });
+  if (error) throw error;
+  return {
+    contributed: data.contributed,
+    totalContributed: data.totalContributed,
+    remainingBalance: data.remainingBalance,
+    unlocked: data.unlocked,
+  };
+}

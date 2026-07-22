@@ -236,11 +236,17 @@ declare
   v_reward  rewards;
   v_balance int;
 begin
-  -- RLS already excludes shared/group rewards (user_id is null on those, and
-  -- the policy is `user_id = auth.uid()`), so no explicit kind check needed.
-  select * into v_reward from rewards where id = p_id;
+  select * into v_reward from rewards where id = p_id; -- RLS-filtered
   if not found then
     raise exception 'reward not found';
+  end if;
+  -- Shared rewards go through fn_contribute_to_reward instead — redeeming
+  -- one directly would let a single member "buy" it off their own balance,
+  -- bypassing the pooled-contribution model (PLAN.md §8). RLS now lets group
+  -- members SELECT shared rewards too, so this can no longer rely on the
+  -- old "user_id is null is invisible" side effect to keep them apart.
+  if v_reward.kind != 'personal' then
+    raise exception 'not a personal reward';
   end if;
   if v_reward.completed_at is not null then
     raise exception 'reward already redeemed';
@@ -260,6 +266,96 @@ begin
 end;
 $$;
 
+-- v2 Phase 2: groups + shared rewards (PLAN.md §5, §8, §9).
+
+-- A non-member can't SELECT a group by invite code (RLS restricts that to
+-- existing members), so the lookup-and-join has to run as the table owner.
+-- The only SECURITY DEFINER function in this codebase — scoped as narrowly
+-- as possible: look up by code, no-op if already a member, else insert,
+-- return only the group's own public info.
+create or replace function public.fn_join_group(p_code text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_group groups;
+begin
+  select * into v_group from groups where invite_code = p_code;
+  if not found then
+    raise exception 'invalid invite code';
+  end if;
+
+  insert into group_members (group_id, user_id) values (v_group.id, auth.uid())
+    on conflict (group_id, user_id) do nothing;
+
+  return jsonb_build_object('id', v_group.id, 'name', v_group.name, 'inviteCode', v_group.invite_code);
+end;
+$$;
+
+create or replace function public.fn_contribute_to_reward(p_reward_id uuid, p_amount int)
+returns jsonb
+language plpgsql
+volatile
+set search_path = public, pg_catalog
+as $$
+declare
+  v_reward             rewards;
+  v_balance            int;
+  v_total_contributed  int;
+begin
+  select * into v_reward from rewards where id = p_reward_id; -- RLS-filtered
+  if not found then
+    raise exception 'reward not found';
+  end if;
+  if v_reward.kind != 'shared' then
+    raise exception 'not a shared reward';
+  end if;
+  if v_reward.completed_at is not null then
+    raise exception 'reward already unlocked';
+  end if;
+  if p_amount <= 0 then
+    raise exception 'amount must be positive';
+  end if;
+  -- Friendly, explicit check rather than letting this fall through to a
+  -- raw RLS rejection on the reward_contributions insert below.
+  if not exists (
+    select 1 from group_members where group_id = v_reward.group_id and user_id = auth.uid()
+  ) then
+    raise exception 'not a member of this group';
+  end if;
+
+  select coalesce(sum(delta), 0) into v_balance from coin_ledger where user_id = auth.uid();
+  if v_balance < p_amount then
+    raise exception 'insufficient coins';
+  end if;
+
+  insert into coin_ledger (user_id, delta, kind, ref_id)
+    values (auth.uid(), -p_amount, 'contribute', p_reward_id);
+  insert into reward_contributions (reward_id, user_id, amount)
+    values (p_reward_id, auth.uid(), p_amount);
+
+  select coalesce(sum(amount), 0) into v_total_contributed
+    from reward_contributions where reward_id = p_reward_id;
+
+  if v_total_contributed >= v_reward.cost then
+    update rewards set completed_at = now() where id = p_reward_id;
+  end if;
+
+  select coalesce(sum(delta), 0) into v_balance from coin_ledger where user_id = auth.uid();
+
+  return jsonb_build_object(
+    'contributed', p_amount,
+    'totalContributed', v_total_contributed,
+    'remainingBalance', v_balance,
+    'unlocked', v_total_contributed >= v_reward.cost
+  );
+end;
+$$;
+
 grant execute on function public.fn_complete_trackable(uuid) to authenticated;
 grant execute on function public.fn_undo_completion(uuid) to authenticated;
 grant execute on function public.fn_redeem_reward(uuid) to authenticated;
+grant execute on function public.fn_join_group(text) to authenticated;
+grant execute on function public.fn_contribute_to_reward(uuid, int) to authenticated;

@@ -58,3 +58,126 @@ create or replace view weekly_leaderboard as
     on c.user_id = p.id and c.completed_on >= date_trunc('week', now())
   group by p.id
   order by weekly_xp desc;
+
+-- v2 Phase 2: groups + shared rewards + contributions (PLAN.md §5, §9).
+
+alter table groups enable row level security;
+alter table group_members enable row level security;
+alter table reward_contributions enable row level security;
+
+-- Shared by the "level 3+ to create a group / shared reward" gate (PLAN.md
+-- §9) so that literal threshold isn't hand-copied into two policies.
+create or replace function public.caller_level()
+returns int
+language sql
+stable
+set search_path = public, pg_catalog
+as $$
+  select level from level_info(
+    (select coalesce(sum(xp_earned), 0)::int from completions where user_id = auth.uid())
+  );
+$$;
+
+-- A group_members policy can't subquery group_members itself in its own
+-- USING clause — Postgres re-evaluates that policy for the subquery and
+-- recurses forever ("infinite recursion detected in policy"). Routing the
+-- lookup through a SECURITY DEFINER function breaks the cycle: it runs as
+-- the function owner, which (absent FORCE ROW LEVEL SECURITY, unset here)
+-- bypasses RLS for its own internal query instead of re-entering this policy.
+create or replace function public.my_group_ids()
+returns setof uuid
+language sql
+security definer
+stable
+set search_path = public, pg_catalog
+as $$
+  select group_id from group_members where user_id = auth.uid();
+$$;
+
+drop policy if exists "member groups"          on groups;
+drop policy if exists "create groups at level 3" on groups;
+drop policy if exists "member group_members"   on group_members;
+drop policy if exists "own rewards"             on rewards;
+drop policy if exists "own or group rewards"    on rewards;
+drop policy if exists "group reward_contributions select" on reward_contributions;
+drop policy if exists "own contribution insert" on reward_contributions;
+
+-- `or created_by = auth.uid()` matters at the exact moment of creation:
+-- INSERT ... RETURNING (supabase-js's .insert().select()) checks this SELECT
+-- policy against the new row within the SAME statement that fires the
+-- on_group_created trigger below — too early to see the trigger's own
+-- group_members insert. Without this clause a creator can't see the group
+-- they just made. Membership (via the trigger) still governs everything
+-- else scoped by my_group_ids() — rewards, contributions, re-fetching later.
+create policy "member groups" on groups for select
+  using (id in (select public.my_group_ids()) or created_by = auth.uid());
+
+-- Joining a group by invite code goes through fn_join_group (SECURITY
+-- DEFINER) instead — a non-member can't SELECT the group to find it
+-- otherwise. No UPDATE/DELETE policy either; out of scope for this pass.
+create policy "create groups at level 3" on groups for insert
+  with check (created_by = auth.uid() and caller_level() >= 3);
+
+-- INSERT ... RETURNING (what supabase-js's .insert().select() sends) also
+-- requires the row to satisfy the SELECT policy, not just WITH CHECK — and
+-- "member groups" only matches existing group_members rows. Without this,
+-- a group's own creator can't see the group they just created. A second,
+-- equally narrow SECURITY DEFINER exception (same justification as
+-- fn_join_group): group_members has no INSERT policy for `authenticated` at
+-- all, so a plain trigger would itself be blocked by RLS.
+create or replace function public.handle_new_group()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+begin
+  insert into group_members (group_id, user_id) values (new.id, new.created_by)
+    on conflict (group_id, user_id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_group_created on groups;
+create trigger on_group_created
+  after insert on groups
+  for each row execute function public.handle_new_group();
+
+create policy "member group_members" on group_members for select
+  using (group_id in (select public.my_group_ids()));
+
+-- Deliberately no INSERT policy on group_members for `authenticated` — the
+-- only path in is fn_join_group, which bypasses RLS as SECURITY DEFINER.
+
+-- Replaces the Phase 1 "own rewards" policy: personal rewards work exactly
+-- as before, and shared rewards (user_id is null, group_id set) are visible
+-- to / editable by any member of that group, matching PLAN.md §8's "members
+-- contribute -> pool fills" model (no creator-only distinction).
+create policy "own or group rewards" on rewards for all
+  using (
+    user_id = auth.uid()
+    or group_id in (select public.my_group_ids())
+  )
+  with check (
+    (user_id = auth.uid() and kind = 'personal')
+    or (
+      kind = 'shared' and user_id is null
+      and group_id in (select public.my_group_ids())
+      and caller_level() >= 3
+    )
+  );
+
+create policy "group reward_contributions select" on reward_contributions for select
+  using (
+    reward_id in (
+      select id from rewards where group_id in (select public.my_group_ids())
+    )
+  );
+
+create policy "own contribution insert" on reward_contributions for insert
+  with check (
+    user_id = auth.uid()
+    and reward_id in (
+      select id from rewards where group_id in (select public.my_group_ids())
+    )
+  );

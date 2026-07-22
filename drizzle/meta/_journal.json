@@ -15,6 +15,13 @@
       "when": 1784663263795,
       "tag": "0001_bouncy_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784706960490,
+      "tag": "0002_wakeful_dreaming_celestial",
+      "breakpoints": true
     }
   ]
 }

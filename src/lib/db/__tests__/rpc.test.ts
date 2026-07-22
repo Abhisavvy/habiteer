@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
-import { beforeAll, beforeEach, describe, it, expect } from "vitest";
+import { beforeAll, afterAll, beforeEach, describe, it, expect } from "vitest";
 import { comboMultiplier } from "@/features/gamification/combo";
 import { taskCoins } from "@/features/gamification/coins";
 import {
@@ -16,6 +16,12 @@ import {
   seedHistoricalCompletion,
   setFreezeBalance,
   getFreezeBalance,
+  seedXp,
+  makeOtherUser,
+  makeGroup,
+  cleanupGroup,
+  makeSharedReward,
+  cleanupSharedReward,
 } from "./testClient";
 
 beforeAll(async () => {
@@ -403,6 +409,151 @@ describe("ownership / RLS", () => {
       expect(error).not.toBeNull();
     } finally {
       await otherClient.from("trackables").delete().eq("id", otherTrackable!.id);
+    }
+  });
+});
+
+describe("fn_join_group", () => {
+  let fundingId: string;
+  beforeAll(async () => {
+    const { trackableId } = await seedXp(400); // comfortably level 3+, required to create a group
+    fundingId = trackableId;
+  });
+  afterAll(async () => {
+    await cleanupTrackable(fundingId);
+  });
+
+  it("adds membership with a valid code", async () => {
+    const group = await makeGroup("join-valid");
+    const other = await makeOtherUser();
+    try {
+      const { data, error } = await other.client.rpc("fn_join_group", { p_code: group.invite_code });
+      expect(error).toBeNull();
+      expect(data.id).toBe(group.id);
+      const { data: membership } = await testClient
+        .from("group_members")
+        .select("*")
+        .eq("group_id", group.id)
+        .eq("user_id", other.userId);
+      expect(membership?.length).toBe(1);
+    } finally {
+      await cleanupGroup(group.id);
+    }
+  });
+
+  it("rejects an invalid code", async () => {
+    const { error } = await testClient.rpc("fn_join_group", { p_code: "NOPE99" });
+    expect(error).not.toBeNull();
+  });
+
+  it("is idempotent when joining twice", async () => {
+    const group = await makeGroup("join-twice");
+    const other = await makeOtherUser();
+    try {
+      const first = await other.client.rpc("fn_join_group", { p_code: group.invite_code });
+      expect(first.error).toBeNull();
+      const second = await other.client.rpc("fn_join_group", { p_code: group.invite_code });
+      expect(second.error).toBeNull();
+      const { data: memberships } = await testClient
+        .from("group_members")
+        .select("*")
+        .eq("group_id", group.id)
+        .eq("user_id", other.userId);
+      expect(memberships?.length).toBe(1); // no duplicate row
+    } finally {
+      await cleanupGroup(group.id);
+    }
+  });
+});
+
+describe("fn_contribute_to_reward", () => {
+  let fundingId: string;
+  beforeAll(async () => {
+    const { trackableId } = await seedXp(400);
+    fundingId = trackableId;
+  });
+  afterAll(async () => {
+    await cleanupTrackable(fundingId);
+  });
+
+  it("rejects a contribution from a non-member", async () => {
+    const group = await makeGroup("contrib-nonmember");
+    const reward = await makeSharedReward(group.id, 100);
+    const other = await makeOtherUser();
+    try {
+      const { error } = await other.client.rpc("fn_contribute_to_reward", { p_reward_id: reward.id, p_amount: 10 });
+      expect(error).not.toBeNull();
+    } finally {
+      await cleanupSharedReward(reward.id);
+      await cleanupGroup(group.id);
+    }
+  });
+
+  it("deducts the contributor's balance and unlocks at target", async () => {
+    const group = await makeGroup("contrib-unlock");
+    const reward = await makeSharedReward(group.id, 20);
+    const funding = await makeTrackable({ kind: "task", difficulty: "hard" }); // +26 coins
+    try {
+      await testClient.rpc("fn_complete_trackable", { p_id: funding.id });
+      const before = await ledgerBalance();
+
+      const { data, error } = await testClient.rpc("fn_contribute_to_reward", {
+        p_reward_id: reward.id,
+        p_amount: 20,
+      });
+      expect(error).toBeNull();
+      expect(data.unlocked).toBe(true);
+      expect(data.totalContributed).toBe(20);
+      const after = await ledgerBalance();
+      expect(after).toBe(before - 20);
+
+      const { data: row } = await testClient.from("rewards").select("completed_at").eq("id", reward.id).single();
+      expect(row?.completed_at).not.toBeNull();
+    } finally {
+      await cleanupSharedReward(reward.id);
+      await cleanupTrackable(funding.id);
+      await cleanupGroup(group.id);
+    }
+  });
+
+  it("leaves it un-unlocked when below target", async () => {
+    const group = await makeGroup("contrib-partial");
+    const reward = await makeSharedReward(group.id, 1000);
+    const funding = await makeTrackable({ kind: "task", difficulty: "hard" });
+    try {
+      await testClient.rpc("fn_complete_trackable", { p_id: funding.id });
+      const { data, error } = await testClient.rpc("fn_contribute_to_reward", {
+        p_reward_id: reward.id,
+        p_amount: 10,
+      });
+      expect(error).toBeNull();
+      expect(data.unlocked).toBe(false);
+      const { data: row } = await testClient.from("rewards").select("completed_at").eq("id", reward.id).single();
+      expect(row?.completed_at).toBeNull();
+    } finally {
+      await cleanupSharedReward(reward.id);
+      await cleanupTrackable(funding.id);
+      await cleanupGroup(group.id);
+    }
+  });
+
+  it("rejects contributing more than the caller's balance, with no partial row", async () => {
+    const group = await makeGroup("contrib-insufficient");
+    const reward = await makeSharedReward(group.id, 999999);
+    try {
+      const { error } = await testClient.rpc("fn_contribute_to_reward", {
+        p_reward_id: reward.id,
+        p_amount: 999999,
+      });
+      expect(error).not.toBeNull();
+      const { data: contributions } = await testClient
+        .from("reward_contributions")
+        .select("id")
+        .eq("reward_id", reward.id);
+      expect(contributions?.length).toBe(0);
+    } finally {
+      await cleanupSharedReward(reward.id);
+      await cleanupGroup(group.id);
     }
   });
 });

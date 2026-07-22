@@ -253,6 +253,89 @@ Known follow-ups (not blocking)
 - Widget preview image is a placeholder solid-color PNG, not real branding —
   tracked as part of the UX/UI polish pass now underway (see below).
 
+## v2 Phase 2 — Shared rewards + groups + invite codes (done)
+Done
+- Schema: `groups` (id, name, `invite_code` unique, `created_by`,
+  `created_at`), `group_members` (group_id, user_id, joined_at, unique
+  pair), `reward_contributions` (id, reward_id, user_id, amount,
+  created_at) — Drizzle migration, `rewards.group_id` given a real FK
+  (previously a bare uuid column since Phase 1).
+- RLS (`rls.sql`): `groups` — members-only `SELECT` (plus `created_by =
+  auth.uid()` — see gotcha below), `INSERT` gated at level 3 via a new
+  `caller_level()` helper. `group_members` — members-only `SELECT`, **no**
+  `INSERT` policy for `authenticated` at all (the only path in is
+  `fn_join_group`). `rewards`' Phase 1 policy extended to also cover shared
+  rewards for group members. `reward_contributions` — members-only
+  `SELECT`, own-contribution `INSERT`.
+- RPCs (`rpc.sql`): `fn_join_group` (`SECURITY DEFINER` — the first in this
+  codebase; a non-member can't `SELECT` a group by code otherwise),
+  `fn_contribute_to_reward` (`SECURITY INVOKER`, mirrors
+  `fn_redeem_reward`'s shape). `fn_redeem_reward` now explicitly rejects
+  non-personal rewards — see gotcha below. Full detail in `rpc.README.md`.
+- Client: `src/features/groups/` (schemas/api/hooks/`GroupCard`/
+  `CreateOrJoinPanel`, mirrors `features/rewards/`'s layered pattern),
+  `features/rewards/` extended with `SharedRewardCard` + shared-reward
+  api/hooks. New 4th tab `app/(tabs)/groups.tsx` + stack screen
+  `app/group/[id].tsx` (invite code, member list, shared rewards with a
+  funded-progress bar and a "chip in" contribute control).
+- 6 new RPC integration tests (`fn_join_group`, `fn_contribute_to_reward`);
+  56 total, all green; `tsc --noEmit` clean. Verified live on device: the
+  level-3 gate correctly blocks group creation for a level-1 account with
+  the right message, joining with an invalid invite code surfaces a clean
+  "invalid invite code" alert end-to-end (RPC → RLS → client).
+
+Two real Postgres/RLS gotchas hit and fixed while implementing this:
+- **Self-referencing RLS policy → infinite recursion.** The obvious
+  `group_members` `SELECT` policy (`group_id in (select group_id from
+  group_members where user_id = auth.uid())`) subqueries its own table from
+  inside its own policy — Postgres re-evaluates the policy for that
+  subquery and recurses forever. Fixed with a `SECURITY DEFINER` helper,
+  `my_group_ids()`, that looks up membership without re-triggering the
+  policy (same "bypass RLS for one narrow, necessary lookup" justification
+  as `fn_join_group`).
+- **`INSERT ... RETURNING` under RLS also enforces the `SELECT` policy.**
+  `supabase-js`'s `.insert().select()` sends `INSERT ... RETURNING`, and
+  Postgres requires the returned row to satisfy the table's `SELECT`
+  policy too, evaluated in the *same statement* — too early to see an
+  `AFTER INSERT` trigger's own effects. A group's creator couldn't see the
+  group they'd just created, even with a trigger that adds them to
+  `group_members`, because that trigger's insert lands one statement too
+  late. Fixed by adding `or created_by = auth.uid()` directly to the
+  `groups` `SELECT` policy — the trigger still runs and is still needed for
+  every *other* group-scoped policy (rewards, contributions, re-fetching
+  later), just not for this one immediate-visibility case.
+
+Also found and fixed, unrelated to groups but surfaced while confirming a
+clean TDD "red" baseline before this phase's work:
+- **Real regression, not a test bug**: `drizzle-kit push` (v0.31 added
+  RLS-awareness) silently emitted `DISABLE ROW LEVEL SECURITY` for every
+  pre-existing table on the schema push for this phase's new tables, since
+  `schema.ts` never declares `.enableRLS()` on them. This briefly made
+  every table's data readable/writable by any authenticated user,
+  regardless of ownership — caught because it broke the
+  "hides another user's trackable" RLS test. Fixed by re-running
+  `db:apply-sql` (`rls.sql` is idempotent) — but the underlying gap
+  (`schema.ts` and the live RLS state can silently diverge on any future
+  `db:push`) is not fixed, flagged as a follow-up below.
+- A stale ~20 XP of drift on the persistent integration-test account,
+  caused by that same RLS gap: while RLS was down, a cross-user test
+  ("hides another user's trackable") actually completed another user's
+  trackable *as* the test account, leaving two orphan `completions`/
+  `coin_ledger` rows that its cleanup never anticipated. Purged manually;
+  broke two freeze-token boundary-crossing tests until found.
+
+Known follow-ups (not blocking)
+- **`db:push` can silently disable RLS on tables `schema.ts` doesn't mark
+  `.enableRLS()` on** (found above) — no code fix applied yet. Either add
+  `.enableRLS()` to every table in `schema.ts`, or always re-run
+  `db:apply-sql` after any `db:push` and treat that as a hard rule, not a
+  "should be fine" assumption.
+- No "leave group" affordance (out of scope for this pass, per the plan).
+- Contributions are not undoable (matches the existing accepted gap for
+  personal reward redemption).
+- No image support for shared rewards (emoji-only, same as personal
+  rewards).
+
 ## Now: UX/UI polish pass (design-led, separate track)
 User is redesigning app + widget visuals (including a real app icon —
 there's never been one, still Expo's default placeholder) in a separate
@@ -264,9 +347,8 @@ continues in parallel on the v2 roadmap below; visual changes land whenever
 the design pass is ready to hand off, not blocking other v2 work.
 
 ## Next
-- v2, in priority order per PLAN.md §13: shared rewards/groups (next) → week/
-  month quota recurrence → gamified stats page → league tiers → cosmetics/
-  unlocks → reduction mode.
+- v2, in priority order per PLAN.md §13: week/month quota recurrence (next)
+  → gamified stats page → league tiers → cosmetics/unlocks → reduction mode.
 - Sounds/haptics implementation (spec'd in the UX brief above, not yet built).
 
 ## Bugs / blockers

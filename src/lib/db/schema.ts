@@ -53,6 +53,24 @@ export const freezeTokens = pgTable("freeze_tokens", {
   balance: integer("balance").notNull().default(0),
 });
 
+export const groups = pgTable("groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  inviteCode: text("invite_code").notNull().unique(),
+  createdBy: uuid("created_by").notNull().references(() => profiles.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const groupMembers = pgTable(
+  "group_members",
+  {
+    groupId: uuid("group_id").notNull().references(() => groups.id),
+    userId: uuid("user_id").notNull().references(() => profiles.id),
+    joinedAt: timestamp("joined_at").defaultNow(),
+  },
+  (t) => ({ onceMember: unique().on(t.groupId, t.userId) })
+);
+
 export const rewards = pgTable("rewards", {
   id: uuid("id").primaryKey().defaultRandom(),
   kind: text("kind").notNull(), // 'personal' | 'shared'
@@ -60,7 +78,15 @@ export const rewards = pgTable("rewards", {
   emoji: text("emoji").notNull(),
   cost: integer("cost").notNull(),
   userId: uuid("user_id").references(() => profiles.id), // personal owner
-  groupId: uuid("group_id"), // shared (v2)
+  groupId: uuid("group_id").references(() => groups.id), // shared
   completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const rewardContributions = pgTable("reward_contributions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  rewardId: uuid("reward_id").notNull().references(() => rewards.id),
+  userId: uuid("user_id").notNull().references(() => profiles.id),
+  amount: integer("amount").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });

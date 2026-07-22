@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Check, Gift, Trophy } from "lucide-react-native";
+import { Check, Gift, Trophy, Users } from "lucide-react-native";
 import { theme } from "@/constants/theme";
 import { useWidgetSync } from "@/features/widget/useWidgetSync";
 
@@ -27,6 +27,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="leaderboard"
         options={{ title: "Ranks", tabBarIcon: ({ color, size }) => <Trophy size={size} strokeWidth={3} color={color} /> }}
+      />
+      <Tabs.Screen
+        name="groups"
+        options={{ title: "Groups", tabBarIcon: ({ color, size }) => <Users size={size} strokeWidth={3} color={color} /> }}
       />
     </Tabs>
   );
