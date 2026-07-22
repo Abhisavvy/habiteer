@@ -1,6 +1,7 @@
 import type { ISODate } from "@/features/gamification/dates";
 import type { Trackable } from "@/features/trackables/api";
 import type { Completion } from "@/features/completions/api";
+import { taskCoins } from "@/features/gamification/coins";
 import { filterDueToday } from "@/features/trackables/today";
 import { trackableStatus } from "@/features/completions/derived";
 
@@ -9,8 +10,14 @@ export type WidgetSnapshotItem = {
   name: string;
   emoji: string;
   kind: "habit" | "task";
+  payout: number;
   isDone: boolean;
 };
+
+/** Matches TrackableCard's payoutCoins — only tasks apply the difficulty discount. */
+function payoutFor(t: Trackable): number {
+  return t.kind === "task" ? taskCoins(t.difficulty) : t.coinValue;
+}
 
 export type WidgetSnapshot = {
   items: WidgetSnapshotItem[];
@@ -41,6 +48,7 @@ export function buildWidgetSnapshot(
     name: t.name,
     emoji: t.emoji,
     kind: t.kind,
+    payout: payoutFor(t),
     isDone: status.isDoneToday,
   }));
 

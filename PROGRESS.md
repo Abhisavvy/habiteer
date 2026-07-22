@@ -738,5 +738,148 @@ wanted:**
   second full token set + per-screen verification, on the scale of
   redesign Phases B–E again.
 
+## v2 UX/UI redesign — post-commit bug batch (all fixed)
+Three bugs reported together after the Profile-move commit, plus a separate
+widget-styling ask:
+
+1. **Habit completion doesn't visually update the card — FIXED, root
+   cause confirmed.** Static review found nothing; the bug only
+   reproduces in a specific time window, which is why it looked
+   intermittent. Root cause: `today()` in `src/features/trackables/
+   today.ts` computed the **local device date** (`new Date().getFullYear()/
+   getMonth()/getDate()`), but the server's `current_app_date()`
+   (`rpc.sql`) is deliberately **UTC-anchored**, matching the rest of the
+   gamification lib (`dates.ts` uses `getUTCDate()` everywhere — the
+   comment right above `current_app_date()` even names this convention).
+   On a device in IST (UTC+5:30), between local midnight and ~5:30 AM,
+   the client's "today" is a full calendar day ahead of the server's — so
+   a habit completed that UTC-day never matches the client's done-check,
+   no matter how many times you tap. Confirmed via a live device repro
+   with temporary `console.log` instrumentation (removed after
+   diagnosis): the mutation *was* succeeding every time — the RPC's own
+   same-day idempotency guard correctly no-op'd repeat taps (no double
+   coin-granting, confirmed via a direct query against the live coin
+   ledger) — but the client-side `isDoneToday` check never flipped
+   because of the date mismatch. Fixed by making `today()` UTC-anchored
+   (`new Date().toISOString().slice(0, 10)`), built TDD (a new test
+   pins the local-vs-UTC drift at a fake IST midnight-crossing instant,
+   confirmed red, then green). Verified end-to-end on device: after the
+   fix, an already-completed habit from hours earlier immediately showed
+   its DONE stamp/strikethrough/jade check and the header's done-count
+   updated, with no further tap needed (Fast Refresh + the now-correct
+   date matching the already-cached completion).
+2. **`TrackablePanel`'s Name input placeholder was invisible** (white-on-
+   white). Root cause: the VALUE text color was always correct
+   (`theme.color.ink`) — it was the *placeholder* falling back to a
+   system default with no `placeholderTextColor` set. Fixed here and, on
+   audit, also missing in `CreateOrJoinPanel.tsx` and `RewardPanel.tsx`.
+3. **Schedule segmented control ("Every day"/"Specific days"/"Weekly"/
+   "Monthly") wasn't vertically centered** — "Specific days" (the longest
+   label) likely wraps to 2 lines in its ~1/4-width slot, and `segment`
+   only had horizontal centering (`alignItems`), not vertical
+   (`justifyContent`). Added `justifyContent: "center"` +
+   `textAlign: "center"`, applied to both `TrackablePanel.tsx` and (for
+   consistency) `CreateOrJoinPanel.tsx`. Not yet re-verified on device.
+4. **Removed the add/edit panel's "↓ Live preview"** section per request
+   — deleted the preview `TrackableCard` render, its now-unused
+   `previewTrackable`/`previewStatus` locals, and the now-dead imports.
+5. **Found while investigating #2, not directly reported: `RewardPanel.tsx`
+   had never been restyled in this whole redesign** — zero font tokens,
+   zero shadows, a plain numeric cost input. Rewritten to match
+   `TrackablePanel`'s locked conventions exactly: header row + close
+   button, `HardShadow` panel, `HardShadow`-wrapped emoji swatches with a
+   yellow selected state, and the Cost field converted from free-text to
+   a ±10 stepper (matching the Coins stepper pattern already used
+   elsewhere) — `cost` state changed `string` → `number` (verified against
+   `RewardFormValues`'s `z.ZodNumber` — no mismatch).
+6. **"The widgets are not updated to the new style."** Investigated the
+   `react-native-android-widget` library's real constraints first:
+   `FlexWidget`'s style type (`CommonStyleProps`) has **no shadow/elevation
+   prop at all** — box-level hard shadows are architecturally impossible
+   here, unlike the rest of the app. No native font resources exist under
+   `android/app/src/main/res/font/` either, so custom fonts aren't
+   trivially usable in `TextWidget` without a real font-resource pipeline.
+   Given those limits, the achievable win was difficulty-tinted, bordered
+   emoji boxes per row (mirroring `TrackableCard`'s `DIFF_LIGHT_TINT`
+   convention) and a bordered yellow coin badge in the header (mirroring
+   the app's `coinBadge`). Built test-first: added
+   `difficulty: Difficulty` to `WidgetSnapshotItem` in `snapshot.ts` (and
+   `buildWidgetSnapshot`'s mapping), added a new `snapshot.test.ts` case,
+   confirmed red (`expected undefined to be 'hard'`), then implemented to
+   green (82/82). `HabitWidget.tsx` now renders each row's emoji inside a
+   26×26 bordered box tinted by difficulty (light tint in the light
+   variant; a new low-opacity `rgba` approximation — no dark-mode mockup
+   example exists for this — in the dark variant), and the header coin
+   balance inside a bordered yellow badge. One TS wrinkle: the library's
+   `ColorProp` type is a strict `#hex` / `rgba(n, n, n, n)` template
+   literal (spaces after commas required) — `DIFF_LIGHT_TINT`'s type is
+   plain `string` (used elsewhere as a normal RN style value), so it needs
+   an explicit cast at the widget call site; not worth widening the
+   shared constant's type just for this one strict consumer.
+- `npx tsc --noEmit` clean; full `vitest run` green (83/83 — the widget-
+  difficulty test plus the new `today()` UTC-anchoring test).
+- **Item 1 (completion not updating) is device-verified end-to-end** —
+  reproduced live via a real device repro session, root-caused to a
+  local-vs-UTC date mismatch, fixed, and confirmed working on-device: an
+  hours-old completion instantly showed as done post-fix, and the coin
+  balance (separately double-checked against a direct query against the
+  live database) settled to the correct true total. **Item 6 (widget)
+  still needs the user to check the actual home-screen widget** — can't
+  screenshot it directly (it's outside the app's own screen, and `adb
+  shell input` is blocked on this device by `INJECT_EVENTS`, so I can't
+  add/resize it myself either). Items 2/3/4/5 are code-level fixes
+  verified by `tsc`+`vitest` only, not yet re-screenshotted on device.
+- **Superseded shortly after by a full mockup-driven rebuild** — see next
+  section.
+- **Not committed yet** — no commit/push request for this batch.
+
+## Widget rebuild to match a supplied reference mockup (done, pending device check)
+After the above, the user supplied a concrete light/dark mockup image
+(checklist-in-a-card style, with a clock peeking out behind the main card)
+— superseding the difficulty-tint iteration just above, which doesn't
+appear in this reference at all.
+
+- `snapshot.ts`: swapped the now-unused `difficulty` field on
+  `WidgetSnapshotItem` for `payout: number` (the per-item coin value the
+  mockup shows as "+18"/"+10"/etc.), computed via the same task-difficulty-
+  discount rule `TrackableCard` already uses. TDD'd: new test confirmed
+  red, then green (83/83 unchanged — a straight swap, not a net-new case).
+- `HabitWidget.tsx` fully rebuilt:
+  - The peeking clock card behind the main list is real layering, not an
+    approximation — built with the library's `OverlapWidget`, which maps
+    directly to Android's native `FrameLayout` (confirmed by reading the
+    library's own source: `OverlapWidget.__name__ = 'FrameLayoutWidget'`).
+    The clock card renders first (top-left, no offset); the main card
+    renders second with a `marginTop` that covers everything but the
+    clock's top sliver — true z-stacking, not a visual trick.
+  - Header row: new jade checkmark badge next to "Habiteer" (wasn't in
+    any earlier iteration), coin balance as bare `🪙 {n}` next to it (no
+    badge box, matching the mockup's plain look, dropping the earlier
+    bordered-yellow-badge treatment).
+  - Rows: square rounded checkboxes (jade-filled + white check when done,
+    outline-only otherwise) replacing the difficulty-tinted circular
+    emoji box; per-item `+{payout}` coin label added; thin divider lines
+    between rows (and below the header) instead of each row being its own
+    bordered card.
+  - Footer row: `+N more due today` / `🔥 {streak}` side by side, dropping
+    the earlier full-width "open app" bar.
+  - Dark mode: card border switches to `widgetDark.accentViolet` (a
+    genuine deviation from the existing dark palette's "borders invert to
+    paper" rule — the new mockup explicitly shows a violet outline, not a
+    paper-white one, so the mockup's spec wins for this specific border).
+- **Two real, stated platform limits** (not glossed over): this library's
+  `TextWidgetStyle` has zero `textDecorationLine` support, so done items
+  can only fade grey, not strike through, unlike the in-app card. And the
+  clock is not live-ticking — it only reflects whatever moment the widget
+  last actually re-rendered (app open, a habit tap, a resize, or the OS's
+  own refresh, capped at `updatePeriodMillis: 1800000` — 30 minutes is
+  Android's OS-level minimum, not a value this app chose).
+- `npx tsc --noEmit` clean; full `vitest run` green (83/83).
+- **Not device-verified yet** — same constraint as before (can't
+  screenshot outside the app itself, `adb shell input` blocked on this
+  device) — waiting on the user to check the actual home-screen widget,
+  light and dark.
+- **Not committed** — no commit/push request for this batch.
+
 ## Bugs / blockers
 - None blocking. See "Known follow-ups" above for accepted v1/v2 gaps.

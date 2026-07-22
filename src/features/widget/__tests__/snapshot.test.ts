@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildWidgetSnapshot, capSnapshotRows, rowsForHeight } from "../snapshot";
+import { taskCoins } from "@/features/gamification/coins";
 import type { Trackable } from "@/features/trackables/api";
 import type { Completion } from "@/features/completions/api";
 
@@ -65,6 +66,14 @@ describe("buildWidgetSnapshot", () => {
     expect(snap.items).toHaveLength(1);
     expect(snap.items[0].id).toBe("not-done");
     expect(snap.moreCount).toBe(1);
+  });
+
+  it("carries the per-item coin payout, matching TrackableCard's convention", () => {
+    const habit = trackable({ id: "habit", kind: "habit", coinValue: 25 });
+    const task = trackable({ id: "task", kind: "task", difficulty: "hard" });
+    const snap = buildWidgetSnapshot([habit, task], [], 0, TODAY, 5);
+    expect(snap.items.find((i) => i.id === "habit")?.payout).toBe(25);
+    expect(snap.items.find((i) => i.id === "task")?.payout).toBe(taskCoins("hard"));
   });
 
   it("marks isDone correctly per item", () => {

@@ -19,8 +19,10 @@ export function filterDueToday(trackables: Trackable[], onDate: ISODate): Tracka
   });
 }
 
-/** Local-device "today," matching the old prototype's isoLocal() convention — display only. */
+/** UTC-anchored "today" — must match the server's `current_app_date()`
+ * (rpc.sql), which every completion is stamped against. A local-device date
+ * would drift from the server's for hours around midnight in any timezone
+ * ahead of UTC, silently breaking the done-today check. */
 export function today(): ISODate {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return new Date().toISOString().slice(0, 10);
 }

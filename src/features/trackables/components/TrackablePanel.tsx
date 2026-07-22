@@ -8,8 +8,6 @@ import type { Difficulty } from "@/features/gamification/constants";
 import { DIFF_TINT, DIFF_LIGHT_TINT } from "../constants";
 import type { Trackable } from "../api";
 import type { TrackableFormValues } from "../schemas";
-import { TrackableCard } from "./TrackableCard";
-import type { TrackableStatus } from "@/features/completions/derived";
 
 const EMOJI_CHOICES = ["🏃", "💧", "📖", "🧘", "🥗", "💪", "😴"];
 const DIFFICULTIES: { value: Difficulty; label: string }[] = [
@@ -97,28 +95,6 @@ export function TrackablePanel({
     });
   };
 
-  // Renders the exact card this form would produce, live, so there's no
-  // "what will this look like?" gap while building it.
-  const previewTrackable: Trackable = {
-    id: initial?.id ?? "preview",
-    kind,
-    name: name.trim() || (kind === "habit" ? "Your habit" : "Your task"),
-    emoji,
-    difficulty,
-    coinValue,
-    period: kind === "task" ? null : scheduleMode === "weekly" ? "week" : scheduleMode === "monthly" ? "month" : "day",
-    quota: kind === "habit" && isRecurrence ? Number(quota) || 1 : 1,
-    weekdays: kind === "habit" && scheduleMode === "specific" ? weekdays : null,
-    archivedAt: null,
-    createdAt: initial?.createdAt ?? new Date().toISOString(),
-  };
-  const previewStatus: TrackableStatus = {
-    streak: 0,
-    isDoneToday: false,
-    combo: 1,
-    periodProgress: isRecurrence ? { completed: 0, quota: Number(quota) || 1 } : undefined,
-  };
-
   const title = mode === "edit" ? (kind === "habit" ? "Edit habit" : "Edit task") : kind === "habit" ? "New habit" : "New task";
 
   return (
@@ -136,6 +112,7 @@ export function TrackablePanel({
           <TextInput
             style={styles.input}
             placeholder="Name your habit or task…"
+            placeholderTextColor="rgba(26,21,35,0.4)"
             value={name}
             onChangeText={setName}
             maxLength={28}
@@ -259,17 +236,6 @@ export function TrackablePanel({
         )}
       </HardShadow>
 
-      <View style={styles.row}>
-        <Text style={styles.previewLabel}>↓ Live preview</Text>
-        <TrackableCard
-          trackable={previewTrackable}
-          status={previewStatus}
-          onEdit={() => {}}
-          onArchive={() => {}}
-          onToggleComplete={() => {}}
-        />
-      </View>
-
       <View style={styles.actionsRow}>
         <HardShadow style={styles.ghostBtn} onPress={onCancel}>
           <Text style={styles.ghostText}>Cancel</Text>
@@ -336,9 +302,9 @@ const styles = StyleSheet.create({
     padding: 4,
     gap: 4,
   },
-  segment: { flex: 1, alignItems: "center", paddingVertical: 9, borderRadius: 8 },
+  segment: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 9, borderRadius: 8 },
   segmentSelected: { backgroundColor: theme.color.violet },
-  segmentText: { fontWeight: "700", fontSize: 13, color: "rgba(26,21,35,0.55)", fontFamily: fonts.display700 },
+  segmentText: { fontWeight: "700", fontSize: 13, color: "rgba(26,21,35,0.55)", fontFamily: fonts.display700, textAlign: "center" },
   segmentTextSelected: { color: "#fff" },
   emojiRow: { flexDirection: "row", gap: 7 },
   emojiBtn: {
@@ -415,7 +381,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono700,
   },
   hint: { fontSize: 12, fontWeight: "600", color: theme.color.fire },
-  previewLabel: { fontSize: 10, fontWeight: "700", color: theme.color.violet, textTransform: "uppercase", letterSpacing: 1, fontFamily: fonts.mono700 },
   actionsRow: { flexDirection: "row", gap: 12, marginTop: 2 },
   ghostBtn: {
     flex: 1,

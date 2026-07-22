@@ -58,6 +58,7 @@ export function CreateOrJoinPanel({
         <TextInput
           style={styles.input}
           placeholder="Invite code"
+          placeholderTextColor="rgba(26,21,35,0.4)"
           value={code}
           onChangeText={(t) => setCode(t.toUpperCase())}
           autoCapitalize="characters"
@@ -66,7 +67,14 @@ export function CreateOrJoinPanel({
         />
       ) : (
         <>
-          <TextInput style={styles.input} placeholder="Group name" value={name} onChangeText={setName} maxLength={40} />
+          <TextInput
+            style={styles.input}
+            placeholder="Group name"
+            placeholderTextColor="rgba(26,21,35,0.4)"
+            value={name}
+            onChangeText={setName}
+            maxLength={40}
+          />
           {level < GROUP_CREATE_LEVEL && (
             <Text style={styles.hint}>
               Reach level {GROUP_CREATE_LEVEL} to create a group — you're level {level}.
@@ -113,9 +121,9 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     padding: 4,
   },
-  segment: { flex: 1, alignItems: "center", paddingVertical: 9, borderRadius: 8 },
+  segment: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 9, borderRadius: 8 },
   segmentSelected: { backgroundColor: theme.color.violet },
-  segmentText: { fontWeight: "700", fontSize: 13, color: "rgba(26,21,35,0.55)", fontFamily: fonts.display700 },
+  segmentText: { fontWeight: "700", fontSize: 13, color: "rgba(26,21,35,0.55)", fontFamily: fonts.display700, textAlign: "center" },
   segmentTextSelected: { color: "#fff" },
   input: {
     fontWeight: "600",

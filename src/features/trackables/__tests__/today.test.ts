@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { filterDueToday } from "../today";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { filterDueToday, today } from "../today";
 import type { Trackable } from "../api";
 
 function trackable(overrides: Partial<Trackable>): Trackable {
@@ -43,5 +43,28 @@ describe("filterDueToday", () => {
     const weekly = trackable({ id: "weekly", period: "week", quota: 3, weekdays: null });
     const monthly = trackable({ id: "monthly", period: "month", quota: 1, weekdays: null });
     expect(filterDueToday([weekly, monthly], "2026-01-06")).toEqual([weekly, monthly]);
+  });
+});
+
+describe("today", () => {
+  const originalTZ = process.env.TZ;
+
+  beforeEach(() => {
+    // IST is UTC+5:30 — local midnight rolls over ~5.5h before the UTC day does,
+    // the exact window where a local-device date would drift from the server's
+    // UTC-anchored current_app_date().
+    process.env.TZ = "Asia/Kolkata";
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    process.env.TZ = originalTZ;
+  });
+
+  it("stays anchored to UTC's calendar date, not the device's local date", () => {
+    // 2026-07-22T20:00:00Z is already 2026-07-23 01:30 local in IST.
+    vi.setSystemTime(new Date("2026-07-22T20:00:00.000Z"));
+    expect(today()).toBe("2026-07-22");
   });
 });
