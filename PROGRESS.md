@@ -213,10 +213,61 @@ Known follow-ups (not blocking)
 - Leaderboard has no seed/fake data — with few real accounts registered, it
   may show just one or two rows for a while. Expected, not a bug.
 
+## v2 Phase 1 — Android home-screen widget (done)
+Done
+- Left Expo Go permanently for local testing — `react-native-android-widget`
+  needs custom native code, which Expo Go can't run. One-time local Android
+  toolchain set up this session (JDK 17, SDK command-line tools, platform
+  35, NDK) and documented in `README.md` so it's reproducible, not tribal
+  knowledge. `npx expo run:android` (dev client on the USB-connected device)
+  replaces Expo Go for all testing going forward.
+- `src/features/widget/`: `snapshot.ts` (pure, tested — `buildWidgetSnapshot`
+  reuses `filterDueToday`/`trackableStatus` rather than re-deriving due-today
+  or streak logic; `capSnapshotRows`/`rowsForHeight` handle resize-adaptive
+  row counts without needing live app data in the background), `storage.ts`
+  (AsyncStorage), `HabitWidget.tsx` (the widget UI, built from the library's
+  RemoteViews-backed primitives — not regular React Native views),
+  `taskHandler.tsx` (background handler for add/update/resize/click),
+  `useWidgetSync.tsx` (pushes a fresh snapshot whenever the same live
+  TanStack Query data every screen already uses changes).
+- Tap-to-complete on the widget calls the same `fn_complete_trackable` RPC
+  used everywhere else (`completeTrackable` from `src/features/completions/
+  api.ts`, reused not reimplemented). **Best-effort sync, confirmed with
+  user**: optimistic local update always shows immediately; a failed sync
+  leaves that state until the real app next reconciles — not a hardened
+  retry queue, a deliberate scope choice for this first cut.
+- Custom entry point (`index.js`, `package.json` `"main"`) registers the
+  widget task handler before requiring `expo-router/entry` — must use
+  `require()` there, not `import`, since ES import hoisting would otherwise
+  run Expo Router's entry before the handler registration.
+- 8 new tests (49 total, all green); `tsc --noEmit` clean.
+- Verified live on device: widget added to home screen, shows real due-today
+  items/coin balance/top streak, tap-to-complete confirmed working, resize
+  confirmed adapting row count.
+- User-reported bugs fixed in passing: password field had no visible text
+  color (fell back to a low-contrast platform default) and no show/hide
+  toggle — added both (`app/(auth)/sign-in.tsx`).
+
+Known follow-ups (not blocking)
+- No retry queue for failed widget-tap syncs (accepted scope decision above).
+- Widget preview image is a placeholder solid-color PNG, not real branding —
+  tracked as part of the UX/UI polish pass now underway (see below).
+
+## Now: UX/UI polish pass (design-led, separate track)
+User is redesigning app + widget visuals (including a real app icon —
+there's never been one, still Expo's default placeholder) in a separate
+design tool, working from a requirements brief Claude produced covering
+current design-system tokens, per-screen requirements, widget constraints,
+and a sounds/haptics interaction spec (spec'd now, implementation deferred
+to a later pass — confirmed with user, not part of this round). Development
+continues in parallel on the v2 roadmap below; visual changes land whenever
+the design pass is ready to hand off, not blocking other v2 work.
+
 ## Next
-- v2, in priority order per PLAN.md §13: Android home-screen widget → shared
-  rewards/groups → week/month quota recurrence → gamified stats page →
-  league tiers → cosmetics/unlocks → reduction mode.
+- v2, in priority order per PLAN.md §13: shared rewards/groups (next) → week/
+  month quota recurrence → gamified stats page → league tiers → cosmetics/
+  unlocks → reduction mode.
+- Sounds/haptics implementation (spec'd in the UX brief above, not yet built).
 
 ## Bugs / blockers
-- None blocking. See "Known follow-ups" above for accepted v1 gaps.
+- None blocking. See "Known follow-ups" above for accepted v1/v2 gaps.

@@ -1,8 +1,11 @@
 import { Tabs } from "expo-router";
 import { Check, Gift, Trophy } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { useWidgetSync } from "@/features/widget/useWidgetSync";
 
 export default function TabsLayout() {
+  useWidgetSync();
+
   return (
     <Tabs
       screenOptions={{

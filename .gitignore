@@ -3,3 +3,8 @@ node_modules/
 dist/
 .env
 *.log
+
+# Native projects are generated on demand via `npx expo prebuild` (Continuous
+# Native Generation) — config lives in app.config.ts + plugins, not here.
+/android
+/ios

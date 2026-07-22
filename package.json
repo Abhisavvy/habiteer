@@ -2,7 +2,7 @@
   "name": "habiteer",
   "version": "0.1.0",
   "private": true,
-  "main": "expo-router/entry",
+  "main": "./index.js",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -11,10 +11,12 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:gen-sql": "tsx scripts/gen-sql-constants.ts",
-    "db:apply-sql": "tsx scripts/apply-sql.ts"
+    "db:apply-sql": "tsx scripts/apply-sql.ts",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "*",
     "@tanstack/react-query": "*",
     "@types/react": "~19.1.10",
@@ -28,6 +30,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-android-widget": "^0.21.0",
     "react-native-screens": "4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-url-polyfill": "*",
