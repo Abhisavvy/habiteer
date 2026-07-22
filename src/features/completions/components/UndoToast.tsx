@@ -1,27 +1,64 @@
-import { useEffect } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { useEffect, useRef } from "react";
+import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
+import { Check } from "lucide-react-native";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
+import { useReduceMotion } from "@/hooks/useReduceMotion";
 
-/** Brief "Done ✓ — Undo" snackbar shown after completing a task, since it
+/** Brief "Done · {name} — UNDO" snackbar shown after completing a task, since it
  * archives and leaves the list immediately — there's no card left to tap. */
-export function UndoToast({ onUndo, onDismiss }: { onUndo: () => void; onDismiss: () => void }) {
+export function UndoToast({ name, onUndo, onDismiss }: { name: string; onUndo: () => void; onDismiss: () => void }) {
+  const reduceMotion = useReduceMotion();
+  const translateY = useRef(new Animated.Value(20)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+
+  const dismiss = () => {
+    if (reduceMotion) {
+      onDismiss();
+      return;
+    }
+    Animated.parallel([
+      Animated.timing(translateY, { toValue: 20, duration: 160, useNativeDriver: true }),
+      Animated.timing(fade, { toValue: 0, duration: 160, useNativeDriver: true }),
+    ]).start(({ finished }) => finished && onDismiss());
+  };
+
   useEffect(() => {
-    const t = setTimeout(onDismiss, 4000);
+    if (reduceMotion === null) return; // still checking
+
+    if (reduceMotion) {
+      translateY.setValue(0);
+      fade.setValue(1);
+    } else {
+      Animated.parallel([
+        Animated.timing(translateY, { toValue: 0, duration: 220, useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
+      ]).start();
+    }
+
+    const t = setTimeout(dismiss, 4000);
     return () => clearTimeout(t);
-  }, [onDismiss]);
+  }, [reduceMotion]);
+
+  if (reduceMotion === null) return null;
 
   return (
-    <View style={styles.toast}>
-      <Text style={styles.text}>Done ✓</Text>
+    <Animated.View style={[styles.toast, { opacity: fade, transform: [{ translateY }] }]}>
+      <View style={styles.checkBadge}>
+        <Check size={14} strokeWidth={3.5} color={theme.color.ink} />
+      </View>
+      <Text style={styles.text} numberOfLines={1}>
+        Done · {name}
+      </Text>
       <Pressable
         onPress={() => {
           onUndo();
-          onDismiss();
+          dismiss();
         }}
       >
-        <Text style={styles.undo}>Undo</Text>
+        <Text style={styles.undo}>UNDO</Text>
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -29,12 +66,22 @@ const styles = StyleSheet.create({
   toast: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 12,
     backgroundColor: theme.color.ink,
-    borderRadius: theme.radius,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderRadius: 13,
+    paddingVertical: 13,
+    paddingHorizontal: 15,
   },
-  text: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  undo: { color: theme.color.yellow, fontWeight: "800", fontSize: 14 },
+  checkBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: theme.color.jade,
+    borderWidth: 2,
+    borderColor: theme.color.paper,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  text: { flex: 1, color: theme.color.paper, fontWeight: "600", fontSize: 14, fontFamily: fonts.display600 },
+  undo: { color: theme.color.yellow, fontWeight: "700", fontSize: 13, fontFamily: fonts.mono700 },
 });

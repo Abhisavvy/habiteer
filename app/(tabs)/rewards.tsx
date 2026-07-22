@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
-import { Plus } from "lucide-react-native";
+import { useCallback, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
+import { useAddAction } from "@/features/navigation/addAction";
+import { HardShadow } from "@/components/HardShadow";
 import { useCoinBalanceQuery } from "@/features/completions/useCompletions";
 import {
   useRewardsQuery,
@@ -13,6 +15,10 @@ import {
 } from "@/features/rewards/useRewards";
 import { RewardCard } from "@/features/rewards/components/RewardCard";
 import { RewardPanel } from "@/features/rewards/components/RewardPanel";
+import { RedeemSuccessOverlay } from "@/features/rewards/components/RedeemSuccessOverlay";
+import { RedeemConfirmModal } from "@/features/rewards/components/RedeemConfirmModal";
+import { InsufficientFundsModal } from "@/features/rewards/components/InsufficientFundsModal";
+import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import type { Reward } from "@/features/rewards/api";
 
 type PanelState = { mode: "add" } | { mode: "edit"; reward: Reward } | null;
@@ -25,14 +31,27 @@ export default function Rewards() {
   const deleteMutation = useDeleteReward();
   const redeemMutation = useRedeemReward();
   const [panel, setPanel] = useState<PanelState>(null);
+  const [redeemed, setRedeemed] = useState<Reward | null>(null);
+  const [redeemConfirm, setRedeemConfirm] = useState<Reward | null>(null);
+  const [lockedReward, setLockedReward] = useState<Reward | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Reward | null>(null);
+  const balance = coinBalance ?? 0;
+
+  const setAddHandler = useAddAction((s) => s.setHandler);
+  useFocusEffect(
+    useCallback(() => {
+      setAddHandler(() => setPanel({ mode: "add" }));
+      return () => setAddHandler(null);
+    }, [setAddHandler])
+  );
 
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <Text style={styles.title}>REWARDS</Text>
-        <View style={styles.statBadge}>
-          <Text style={styles.statText}>🪙 {coinBalance ?? 0}</Text>
-        </View>
+        <Text style={styles.title}>Rewards</Text>
+        <HardShadow style={styles.statBadge}>
+          <Text style={styles.statText}>🪙 {balance}</Text>
+        </HardShadow>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -44,14 +63,12 @@ export default function Rewards() {
             <RewardCard
               key={r.id}
               reward={r}
+              canAfford={balance >= r.cost}
               redeeming={redeemMutation.isPending}
               onEdit={() => setPanel({ mode: "edit", reward: r })}
-              onDelete={() => deleteMutation.mutate(r.id)}
-              onRedeem={() => {
-                redeemMutation.mutate(r.id, {
-                  onError: (e: Error) => Alert.alert("Couldn't redeem that", e.message),
-                });
-              }}
+              onDelete={() => setDeleteConfirm(r)}
+              onRedeem={() => setRedeemConfirm(r)}
+              onLockedPress={() => setLockedReward(r)}
             />
           ))}
         </View>
@@ -87,13 +104,56 @@ export default function Rewards() {
           />
         )}
 
-        {!panel && (
-          <Pressable style={styles.addBtn} onPress={() => setPanel({ mode: "add" })}>
-            <Plus size={18} strokeWidth={3} color={theme.color.ink} />
-            <Text style={styles.addText}>Add a reward</Text>
-          </Pressable>
-        )}
       </ScrollView>
+
+      {redeemed && (
+        <RedeemSuccessOverlay name={redeemed.name} cost={redeemed.cost} onClose={() => setRedeemed(null)} />
+      )}
+
+      {redeemConfirm && (
+        <RedeemConfirmModal
+          visible
+          name={redeemConfirm.name}
+          emoji={redeemConfirm.emoji}
+          cost={redeemConfirm.cost}
+          balance={balance}
+          onCancel={() => setRedeemConfirm(null)}
+          onConfirm={() => {
+            const r = redeemConfirm;
+            setRedeemConfirm(null);
+            redeemMutation.mutate(r.id, {
+              onSuccess: () => setRedeemed(r),
+              onError: (e: Error) => Alert.alert("Couldn't redeem that", e.message),
+            });
+          }}
+        />
+      )}
+
+      {lockedReward && (
+        <InsufficientFundsModal
+          visible
+          name={lockedReward.name}
+          cost={lockedReward.cost}
+          balance={balance}
+          onClose={() => setLockedReward(null)}
+        />
+      )}
+
+      {deleteConfirm && (
+        <DeleteConfirmModal
+          visible
+          name={deleteConfirm.name}
+          streakDays={0}
+          onCancel={() => setDeleteConfirm(null)}
+          onConfirm={() => {
+            const r = deleteConfirm;
+            setDeleteConfirm(null);
+            deleteMutation.mutate(r.id, {
+              onError: (e: Error) => Alert.alert("Couldn't delete that", e.message),
+            });
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -108,30 +168,25 @@ const styles = StyleSheet.create({
     paddingTop: 54,
     paddingBottom: 14,
   },
-  title: { fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: 0.5, fontFamily: fonts.display700 },
+  title: { fontSize: 22, fontWeight: "800", color: theme.color.ink, fontFamily: fonts.display700 },
   statBadge: {
-    borderWidth: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    borderWidth: theme.border,
     borderColor: theme.color.ink,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: theme.color.card,
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    backgroundColor: theme.color.yellow,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
-  statText: { fontWeight: "700", fontSize: 13, color: theme.color.ink, fontFamily: fonts.mono700 },
+  statText: { fontWeight: "700", fontSize: 19, color: theme.color.ink, fontFamily: fonts.mono700 },
   scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
   list: { gap: 12 },
   error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
-  addBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderStyle: "dashed",
-    borderRadius: theme.radius,
-    paddingVertical: 14,
-    backgroundColor: theme.color.card,
-  },
-  addText: { fontWeight: "700", fontSize: 15, color: theme.color.ink },
 });

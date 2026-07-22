@@ -13,6 +13,13 @@ export function prevDay(date: ISODate): ISODate {
   return d.toISOString().slice(0, 10);
 }
 
+/** The ISO date one day after the given ISO date. */
+export function nextDay(date: ISODate): ISODate {
+  const d = new Date(date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 /** The Monday (UTC) of the ISO week containing the given date. */
 export function weekStart(date: ISODate): ISODate {
   const d = new Date(date + "T00:00:00Z");
@@ -33,6 +40,17 @@ export function prevPeriodStart(periodStart: ISODate, period: "week" | "month"):
     d.setUTCDate(d.getUTCDate() - 7);
   } else {
     d.setUTCMonth(d.getUTCMonth() - 1);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+/** The start of the period immediately after the given period's start date. */
+export function nextPeriodStart(periodStart: ISODate, period: "week" | "month"): ISODate {
+  const d = new Date(periodStart + "T00:00:00Z");
+  if (period === "week") {
+    d.setUTCDate(d.getUTCDate() + 7);
+  } else {
+    d.setUTCMonth(d.getUTCMonth() + 1);
   }
   return d.toISOString().slice(0, 10);
 }

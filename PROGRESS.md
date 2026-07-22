@@ -440,18 +440,255 @@ Done
   start.
 
 Known follow-ups (not blocking)
-- Phases B–E (Today/panel restyle, 5-tab HUD + Profile + modal system,
-  Rewards celebration + Leaderboard redesign, overlay polish + widget dark
-  mode) not started — each gets its own confirmation before starting, per
-  the approved plan.
 - Reduce-motion fallback verified in code review, not device-tested against
   the actual Android "Remove animations" setting.
 
+## v2 UX/UI redesign — Phase B: Today screen + add/edit panel (done)
+Every value pulled from the design's live-rendered DOM (`outerHTML` of the
+actual mockup, not screenshots) via the Browser pane's JS execution — the
+technique adopted mid-Phase-A after the hand-eyeballed icon kept missing the
+real spec. Continued for every screen in B, C, and D.
+
+Done
+- `TrackableCard.tsx` rebuilt to exact spec: hard 5,5 shadow, `opacity:0.62`
+  done-state, light-tint emoji box, uppercase Mono difficulty pill, bare
+  always-shown streak text (no badge), violet-bordered `×N` combo badge,
+  coins-only payout, circular check button, repositioned DONE stamp.
+  Shared `DIFF_TINT`/`DIFF_LIGHT_TINT`/`LIGHT_VIOLET` tokens extracted to
+  `src/features/trackables/constants.ts` so `TrackablePanel` can't drift.
+- `LevelBar.tsx` rebuilt: plain "LVL {n}" + "{into} / {need} XP" row over a
+  pill-track fill.
+- `app/(tabs)/index.tsx` header hierarchy redone (coins dominate, freeze
+  token steps down to a plain outline chip), icon mark + wordmark added,
+  dashed-border empty state for zero-habit accounts.
+- `TrackablePanel.tsx` rebuilt: header + close button, segmented Habit/Task
+  and Schedule controls, coin stepper (was free-text), live preview label.
+- `npx tsc --noEmit` clean; existing tests unaffected (UI-only).
+
+## v2 UX/UI redesign — Phase D (partial): Rewards celebration + Leaderboard (done)
+Done
+- `RewardCard.tsx` rebuilt: Edit/Delete as text links, conditional
+  Redeem-vs-Locked styling by affordability.
+- `RedeemSuccessOverlay.tsx` (new): jade celebratory card, auto-dismisses.
+- `LevelUpOverlay.tsx` and `UndoToast.tsx` rebuilt to exact spec (S6):
+  enlarged "LVL {n}", confetti decorations, freeze-token-gained badge,
+  "Keep going" dismiss button (was a timer auto-dismiss); toast gets a
+  jade check-badge and "Done · {name}" copy.
+- `app/(tabs)/leaderboard.tsx` rebuilt: top-3 medal/shadow treatment with a
+  violet "you" override, circular initial-letter avatars, low-population
+  state ("You're rank #N of M" + `Share.share()` "Invite friends" — no new
+  backend, the leaderboard is global not group-scoped).
+- **Excluded from this pass, per the approved plan**: reward photos — needs
+  a new Supabase Storage bucket + RLS + `expo-image-picker`, scoped as its
+  own follow-up.
+- `vitest.config.ts`: `testTimeout: 20000` — the full suite was flaking on
+  Supabase network latency (5-9 different tests per run, always a timeout,
+  never an assertion failure), not a logic regression; confirmed via an
+  isolated clean run before touching config. Full suite green afterward.
+
+## v2 UX/UI redesign — Phase C: 5-tab HUD + Profile + modal system (done)
+Done
+- **`src/components/Modal.tsx`** (new shared shell, second cross-feature
+  component after `AppSplash`): scrim + bordered/shadowed card per the
+  design's S10 spec, plus `ModalButton` with 5 color-coded variants
+  (cancel/fire/jade/violet/ink) matching the design's "color-coded primary
+  action" convention. Five concrete modals built on it, each replacing a
+  bare `Alert.alert()`: `DeleteConfirmModal` (shared, used by both
+  trackables and rewards), `RedeemConfirmModal` + `InsufficientFundsModal`
+  (rewards), `SignOutConfirmModal` (auth), `StreakFreezeExplainerModal`
+  (completions) — wired into Today (archive), Rewards (redeem/delete/locked
+  tap), and the new Profile screen (sign-out, freeze-token row).
+  **Deliberate copy deviation**: the mockup's streak-freeze copy says
+  "earn one every 7-day streak," but the real rule
+  (`FREEZE_TOKEN_LEVEL_INTERVAL`) awards tokens every 5 *levels*, not by
+  streak length — used the real rule's wording instead of the mockup's
+  literal (incorrect) text.
+- **`src/components/BottomHUD.tsx`** (new custom tab bar, replacing expo-
+  router's default `Tabs` styling): Today/Rewards/Board/Groups/Profile as
+  5 equally-spaced columns at the mockup's exact 56px spec (icon SVGs and
+  active/inactive colors extracted verbatim for the 4 tabs the design
+  covers; Groups — postdating the design — gets a hand-drawn icon in the
+  same stroke language). **Reconciled a real layout gap**: the mockup's
+  HUD has only 4 tabs + 1 centered raised "+" flex child (5 slots); with 5
+  real tabs needed, the "+" button is instead an absolutely-positioned
+  overlay on top of the bar, so every tab keeps its exact mockup spacing
+  untouched. The button is context-aware via a tiny new store
+  (`src/features/navigation/addAction.ts`) — each screen registers its own
+  "open add panel" callback on focus (`useFocusEffect`) and clears it on
+  blur; Board/Profile never register one, so the button simply hides
+  itself there. Today/Rewards/Groups' old inline dashed "+Add" buttons were
+  removed in favor of this one physical button, per the plan.
+- **`app/(tabs)/profile.tsx`** (new screen): avatar (initial-letter, tap ✎
+  to rename — backed by a real `profiles.display_name` update, no new
+  backend needed since the existing RLS policy already allows it), LVL
+  chip + XP bar, 2×2 stats grid (Total XP, Longest streak, Habits done,
+  Coins), tappable freeze-token row, Settings list (sound/haptics toggles
+  persisted to AsyncStorage but not wired to real playback — same
+  "spec now, build later" precedent as Reminders; dark mode row disabled
+  with a "SOON" badge; Reminders is a static UI-only stub), sign-out
+  (moved off the Today header entirely — replaced there with a small
+  violet avatar button that opens Profile).
+- **New gamification logic** (`longestStreakEver`, TDD): `currentStreak`
+  only ever walks backward from today, so the Profile "Longest streak"
+  stat needed a real forward-scanning, period-aware max — added alongside
+  `nextDay`/`nextPeriodStart` in `dates.ts`. 9 new test cases (day +
+  week/month period, grace, weekday-scheduled skip, past-run-longer-than-
+  current) written and confirmed red before implementing; full suite green
+  after (81 tests, up from 74).
+- Computed over currently-active trackables only (archived habits' old
+  configs — weekdays/period/quota — aren't fetched client-side, so their
+  historical streaks aren't included in the "Longest streak" stat). Noted
+  as an accepted scope limit, not a bug.
+- `npx tsc --noEmit` clean; full `vitest run` green (81/81).
+
+Known follow-ups (not blocking)
+- Device verification still pending — phone was offline all of Phase
+  B/C/D; deferred to reconnect, per the user's own call.
+
+## v2 UX/UI redesign — Phase E: overlay polish + widget dark mode (done)
+Done
+- **`src/hooks/useReduceMotion.ts`** (new, extracted from `AppSplash.tsx`'s
+  inline pattern now that a third component needs it): mirrors the OS
+  reduce-motion setting.
+- **`LevelUpOverlay.tsx`**: real entrance — the card scale+fades in
+  (`spring` + `timing`, parallel) instead of popping in instantly; the
+  confetti-star spin loop only starts when reduce-motion is off (previously
+  ran unconditionally, an accessibility miss carried over from Phase D).
+- **`UndoToast.tsx`**: real slide+fade entrance on mount, and an animated
+  exit (both the 4s auto-timeout and a manual "UNDO" tap now animate out
+  before calling `onDismiss`, instead of unmounting instantly) — reduce-
+  motion skips both, same as the overlay.
+- **Widget dark mode**: `HabitWidget.tsx` takes a `dark?: boolean` prop;
+  `taskHandler.tsx` and `useWidgetSync.tsx` now call `renderWidget`/
+  `props.renderWidget` with `{light, dark}` (the library's own supported
+  `WidgetRepresentation` shape — Android's RemoteViews renderer swaps
+  between them per the system day/night setting, no app-side detection
+  needed). Palette (`src/features/widget/darkTheme.ts`) is extracted
+  verbatim from the design's S8 "Dark mode — a peek" mockup DOM — page bg
+  `#151021`, card `#221B33`, track `#241D33`, borders/text invert to paper
+  `#F3F0FF` (the mockup's own stated rationale: "ink borders invert to
+  paper on a deep-violet surface"), accent violet lightens to `#A78BFF` for
+  contrast; semantic colors (yellow/jade/fire) confirmed unchanged in the
+  same mockup. One value has no mockup example to lift (`doneCard`, since
+  S8 only shows undone rows) — an interpolated violet-tinted dark, flagged
+  in the file as analogous rather than extracted, same as the widget's own
+  pre-existing "approximates the app's look, not a 1:1 port" precedent.
+- **Widget-picker preview image** (`assets/widget-preview.png`) regenerated
+  from a flat violet square to a structural mockup of the widget's real
+  layout (title bar, coin badge, an undone row + a done row with its jade
+  check accent, streak pill) — same hand-written PNG encoder as the app
+  icon (rounded-box SDF + 4x supersample AA), now generalized to a
+  painter's-algorithm shape list instead of the icon's H-specific one.
+  **Limitation, not silently glossed over**: there's no font/glyph
+  rasterizer available in this environment, so "Habiteer" and habit names
+  are represented as solid bars (a wireframe/"greeked text" convention),
+  not literal legible copy — every other element (coin-badge yellow, card
+  colors, done-row tint, jade/fire accents) is the real token color.
+- `npx tsc --noEmit` clean; full `vitest run` green (81/81, unchanged —
+  this phase touched no gamification logic).
+
+Known follow-ups (not blocking)
+- Device verification pending for all of B/C/D/E together — the phone has
+  been offline this entire redesign; deferred to reconnect.
+- The widget-preview image's text-as-bars limitation above could be
+  replaced with a literal on-device screenshot once the phone reconnects,
+  if a truer preview is wanted later.
+
+## v2 UX/UI redesign — Groups/shared-rewards restyle (follow-up, done)
+The one gap Phase A–E left flagged as "still open": Groups predates the
+design deliverable entirely, so `groups.tsx`, `group/[id].tsx`,
+`GroupCard`, `CreateOrJoinPanel`, and `SharedRewardCard` never got a
+restyle pass (Phase C only gave Groups a bottom-HUD tab + icon). Done
+while waiting on the phone to reconnect, since it doesn't need a device
+and closes out the redesign completely.
+
+Done
+- Applied the now-fully-locked tokens by extrapolation, not extraction —
+  no mockup exists for these screens, so this reuses established patterns
+  instead: hard offset shadows (5,5 cards / 3–4,3–4 buttons) everywhere
+  that was missing them, exact font families throughout (several spots
+  had none at all — plain system font), the segmented-control pattern from
+  `TrackablePanel` for `CreateOrJoinPanel`'s Join/Create toggle, the
+  Cancel/Save shadowed-button convention for its actions, the pill-track
+  progress-bar convention (border3 ink, radius999) for `SharedRewardCard`'s
+  contribution progress (was a thin height-12 bar with no border-right
+  accent), and the dashed-box empty-state pattern from Today for Groups'
+  zero-groups state (was plain text).
+- **One judgment call**: `group/[id].tsx`'s own inline "+Add shared
+  reward" button was restyled (solid violet, shadowed — no longer dashed)
+  rather than removed in favor of the global floating "+" from Phase C.
+  That button only reaches whichever *tab* is currently focused; this
+  screen is a stack push outside the tab bar, so there's no way for it to
+  trigger from there — it needs to keep its own button.
+- `npx tsc --noEmit` clean; full `vitest run` green (81/81, unchanged —
+  pure restyle, no logic touched).
+
+## v2 UX/UI redesign — device verification (done, two real bugs found + fixed)
+Phone reconnected; ran a full `expo prebuild` + `expo run:android` and
+walked every screen touched since Phase A. Two genuine bugs surfaced —
+both systemic, neither visible from code review or `tsc`/`vitest` alone,
+since they're Android-rendering-specific:
+
+1. **Hard shadows didn't render on Android at all.** `shadowColor`/
+   `shadowOffset`/`shadowRadius` are iOS-only in React Native; Android
+   only has `elevation` (a soft Material blur, not this app's crisp
+   offset look), and even that wasn't showing. This affected **every**
+   card, badge, and button in the app — the exact "screens don't match"
+   complaint. Fixed with a new primitive, `src/components/HardShadow.tsx`:
+   renders the shadow as an actual solid-color layer offset behind the
+   content, instead of relying on native shadow props. It's a drop-in
+   swap for `View`/`Pressable` — same style object, no call site needed
+   its actual style values touched. Applied across all 17 files that had
+   a `shadowColor` (~49 call sites): every component from B through the
+   Groups restyle, plus `sign-in.tsx`.
+   - Surfaced a second bug while building it: a semi-transparent box
+     (`TrackableCard`'s done-state `opacity: 0.62`) let the shadow layer
+     bleed through the *entire* overlap area (nearly the whole box), not
+     just the true offset sliver, washing done-cards grey instead of a
+     muted white. Root cause: RN/Android doesn't flatten a semi-
+     transparent parent's children into one texture before fading unless
+     `needsOffscreenAlphaCompositing` is set — without it, opacity
+     multiplies down to each child independently. Fixed by moving
+     opacity/transform to the wrapper with that flag set, so shadow+
+     content always composite correctly before any fade is applied.
+2. **The splash animation and sign-in screen never matched the current
+   icon.** `AppSplash.tsx` was a hand-approximated H (solid ink bars, no
+   badge frame) predating the icon's final paper-fill/ink-outline/badge
+   treatment — it read as an old draft. Rewritten to the icon's exact
+   SVG spec (same badge frame, same outline+fill layering, same cap
+   placement), keeping the existing rise-then-pop animation. Separately,
+   `sign-in.tsx` had **never been restyled at all** in this whole
+   redesign — it wasn't assigned to any of Phases A–E — only its wordmark
+   got a font token in Phase A. Rebuilt to the exact S1 mockup spec
+   (extracted the same way as every other screen): badge-framed icon,
+   "Level up your day." tagline, labeled inputs, Cancel/Create/Google
+   button hierarchy.
+- Verified live on device after both fixes: Today (cards, header badges,
+  floating "+"), the sign-in screen, and the delete-confirm modal all
+  render correct crisp shadows and the correct current icon.
+- `npx tsc --noEmit` clean; full `vitest run` green (81/81 — pure
+  rendering/UI fixes, no logic touched).
+
+Known follow-ups (not blocking)
+- Only Today, sign-in, and one modal were directly screenshotted on
+  device; Rewards/Board/Groups/Profile/remaining modals weren't
+  individually re-screenshotted after the shadow fix, but use the exact
+  same `HardShadow` primitive already proven correct in three different
+  contexts (plain cards, form buttons, modal), so this is low-risk.
+
 ## Next
-- Continue the v2 UX/UI redesign: Phase B (Today screen + add/edit panel).
-- v2 roadmap per PLAN.md §13, once the redesign phases land: gamified stats
-  page → league tiers → cosmetics/unlocks → reduction mode.
-- Sounds/haptics implementation (spec'd in the UX brief, not yet built).
+- Commit everything together — device verification is now done and
+  passing. Nothing committed yet; confirm with the user before running it,
+  since this batches in every phase (A–E, Groups restyle, and this
+  verification pass) as one commit.
+- v2 roadmap per PLAN.md §13, once the redesign lands: gamified stats page
+  (now largely covered by the new Profile screen — reassess what's actually
+  left) → league tiers → cosmetics/unlocks → reduction mode.
+
+Docs caught up this session: the plan file (`toasty-wibbling-treasure.md`)
+now details B/C/D/E at the same level as A and marks the Groups gap
+resolved, and `PLAN.md` §13 reflects v1/v2 items 1–8 as done, with the
+redesign slotted in as an ad hoc addition after item 8.
 
 ## Bugs / blockers
 - None blocking. See "Known follow-ups" above for accepted v1/v2 gaps.

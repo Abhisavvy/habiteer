@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
-import { Plus } from "lucide-react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
+import { useAddAction } from "@/features/navigation/addAction";
+import { HardShadow } from "@/components/HardShadow";
 import { useCompletionsQuery } from "@/features/completions/useCompletions";
 import { overallProgress } from "@/features/completions/derived";
 import { useMyGroupsQuery, useCreateGroup, useJoinGroup } from "@/features/groups/useGroups";
@@ -18,18 +20,35 @@ export default function Groups() {
   const joinMutation = useJoinGroup();
   const [panelOpen, setPanelOpen] = useState(false);
 
+  const setAddHandler = useAddAction((s) => s.setHandler);
+  useFocusEffect(
+    useCallback(() => {
+      setAddHandler(() => setPanelOpen(true));
+      return () => setAddHandler(null);
+    }, [setAddHandler])
+  );
+
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <Text style={styles.title}>GROUPS</Text>
+        <Text style={styles.title}>Groups</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {isLoading && <ActivityIndicator style={{ marginTop: 40 }} />}
         {error && <Text style={styles.error}>Couldn't load your groups. Pull to retry.</Text>}
 
-        {!isLoading && groups?.length === 0 && !panelOpen && (
-          <Text style={styles.empty}>No groups yet — join one with a code, or create your own.</Text>
+        {!isLoading && !error && groups?.length === 0 && !panelOpen && (
+          <View style={styles.empty}>
+            <View style={styles.emptyIcon}>
+              <Text style={styles.emptyIconText}>👥</Text>
+            </View>
+            <Text style={styles.emptyTitle}>No groups yet</Text>
+            <Text style={styles.emptyBody}>Join one with a code, or create your own.</Text>
+            <HardShadow style={styles.emptyBtn} onPress={() => setPanelOpen(true)}>
+              <Text style={styles.emptyBtnText}>＋ Join or create a group</Text>
+            </HardShadow>
+          </View>
         )}
 
         <View style={styles.list}>
@@ -38,7 +57,7 @@ export default function Groups() {
           ))}
         </View>
 
-        {panelOpen ? (
+        {panelOpen && (
           <CreateOrJoinPanel
             level={level}
             creating={createMutation.isPending}
@@ -57,11 +76,6 @@ export default function Groups() {
               });
             }}
           />
-        ) : (
-          <Pressable style={styles.addBtn} onPress={() => setPanelOpen(true)}>
-            <Plus size={18} strokeWidth={3} color={theme.color.ink} />
-            <Text style={styles.addText}>Join or create a group</Text>
-          </Pressable>
         )}
       </ScrollView>
     </View>
@@ -78,22 +92,47 @@ const styles = StyleSheet.create({
     paddingTop: 54,
     paddingBottom: 14,
   },
-  title: { fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: 0.5, fontFamily: fonts.display700 },
+  title: { fontSize: 22, fontWeight: "800", color: theme.color.ink, fontFamily: fonts.display700 },
   scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
   list: { gap: 12 },
   error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
-  empty: { textAlign: "center", marginTop: 24, marginBottom: 8, color: theme.color.ink, opacity: 0.7 },
-  addBtn: {
-    flexDirection: "row",
+  empty: {
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    gap: 9,
+    borderWidth: 3,
+    borderStyle: "dashed",
+    borderColor: "rgba(26,21,35,0.35)",
+    borderRadius: 12,
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+  },
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 13,
     borderWidth: theme.border,
     borderColor: theme.color.ink,
-    borderStyle: "dashed",
-    borderRadius: theme.radius,
-    paddingVertical: 14,
-    backgroundColor: theme.color.card,
+    backgroundColor: "#EDE7FF",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  addText: { fontWeight: "700", fontSize: 15, color: theme.color.ink },
+  emptyIconText: { fontSize: 24 },
+  emptyTitle: { fontSize: 16, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.display700 },
+  emptyBody: { fontSize: 12.5, lineHeight: 19, color: theme.color.ink, opacity: 0.6, textAlign: "center" },
+  emptyBtn: {
+    marginTop: 4,
+    height: 42,
+    paddingHorizontal: 18,
+    justifyContent: "center",
+    backgroundColor: theme.color.violet,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: 10,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  emptyBtnText: { color: "#fff", fontWeight: "700", fontSize: 14, fontFamily: fonts.display700 },
 });

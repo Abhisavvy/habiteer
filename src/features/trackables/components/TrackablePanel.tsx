@@ -1,18 +1,22 @@
 import { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, ScrollView } from "react-native";
+import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
+import { fonts } from "@/constants/fonts";
 import { defaultCoinValue } from "@/features/gamification/coins";
 import type { Difficulty } from "@/features/gamification/constants";
+import { DIFF_TINT, DIFF_LIGHT_TINT } from "../constants";
 import type { Trackable } from "../api";
 import type { TrackableFormValues } from "../schemas";
+import { TrackableCard } from "./TrackableCard";
+import type { TrackableStatus } from "@/features/completions/derived";
 
-const EMOJI_CHOICES = ["🔥", "📚", "🏋️", "🧠", "🥗", "🎨", "💻", "🌱", "🎯", "☕"];
-const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
-const DIFF_TINT: Record<Difficulty, string> = {
-  easy: theme.color.jade,
-  medium: theme.color.violet,
-  hard: theme.color.fire,
-};
+const EMOJI_CHOICES = ["🏃", "💧", "📖", "🧘", "🥗", "💪", "😴"];
+const DIFFICULTIES: { value: Difficulty; label: string }[] = [
+  { value: "easy", label: "EASY" },
+  { value: "medium", label: "MED" },
+  { value: "hard", label: "HARD" },
+];
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // PLAN.md §9 — mirrors the "own trackables" WITH CHECK level-5 gate in
@@ -41,7 +45,7 @@ export function TrackablePanel({
   const [name, setName] = useState(initial?.name ?? "");
   const [emoji, setEmoji] = useState(initial?.emoji ?? EMOJI_CHOICES[0]);
   const [difficulty, setDifficulty] = useState<Difficulty>(initial?.difficulty ?? "medium");
-  const [coinValue, setCoinValue] = useState(String(initial?.coinValue ?? defaultCoinValue("medium")));
+  const [coinValue, setCoinValue] = useState(initial?.coinValue ?? defaultCoinValue("medium"));
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(
     initial?.period === "week"
       ? "weekly"
@@ -56,7 +60,7 @@ export function TrackablePanel({
 
   const selectDifficulty = (d: Difficulty) => {
     setDifficulty(d);
-    setCoinValue(String(defaultCoinValue(d)));
+    setCoinValue(defaultCoinValue(d));
   };
 
   const toggleWeekday = (d: number) => {
@@ -86,208 +90,319 @@ export function TrackablePanel({
       name: name.trim(),
       emoji,
       difficulty,
-      coinValue: Number(coinValue) || defaultCoinValue(difficulty),
+      coinValue,
       weekdays: kind === "habit" && scheduleMode === "specific" ? weekdays : null,
       period: kind === "task" ? null : scheduleMode === "weekly" ? "week" : scheduleMode === "monthly" ? "month" : "day",
       quota: kind === "habit" && isRecurrence ? Number(quota) || 1 : 1,
     });
   };
 
-  return (
-    <View style={styles.panel}>
-      <TextInput
-        style={styles.input}
-        placeholder="Name your habit or task…"
-        value={name}
-        onChangeText={setName}
-        maxLength={28}
-      />
+  // Renders the exact card this form would produce, live, so there's no
+  // "what will this look like?" gap while building it.
+  const previewTrackable: Trackable = {
+    id: initial?.id ?? "preview",
+    kind,
+    name: name.trim() || (kind === "habit" ? "Your habit" : "Your task"),
+    emoji,
+    difficulty,
+    coinValue,
+    period: kind === "task" ? null : scheduleMode === "weekly" ? "week" : scheduleMode === "monthly" ? "month" : "day",
+    quota: kind === "habit" && isRecurrence ? Number(quota) || 1 : 1,
+    weekdays: kind === "habit" && scheduleMode === "specific" ? weekdays : null,
+    archivedAt: null,
+    createdAt: initial?.createdAt ?? new Date().toISOString(),
+  };
+  const previewStatus: TrackableStatus = {
+    streak: 0,
+    isDoneToday: false,
+    combo: 1,
+    periodProgress: isRecurrence ? { completed: 0, quota: Number(quota) || 1 } : undefined,
+  };
 
-      {mode === "add" && (
+  const title = mode === "edit" ? (kind === "habit" ? "Edit habit" : "Edit task") : kind === "habit" ? "New habit" : "New task";
+
+  return (
+    <View style={styles.wrap}>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>{title}</Text>
+        <Pressable style={styles.closeBtn} onPress={onCancel} aria-label="Close">
+          <Text style={styles.closeBtnText}>✕</Text>
+        </Pressable>
+      </View>
+
+      <HardShadow style={styles.panel}>
         <View style={styles.row}>
-          <Text style={styles.label}>Type</Text>
-          <View style={styles.buttonRow}>
+          <Text style={styles.label}>Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Name your habit or task…"
+            value={name}
+            onChangeText={setName}
+            maxLength={28}
+          />
+        </View>
+
+        {mode === "add" && (
+          <View style={styles.segmented}>
             {(["habit", "task"] as const).map((k) => (
               <Pressable
                 key={k}
-                style={[styles.choiceBtn, kind === k && styles.choiceBtnSelected]}
+                style={[styles.segment, kind === k && styles.segmentSelected]}
                 onPress={() => setKind(k)}
               >
-                <Text style={[styles.choiceText, kind === k && styles.choiceTextSelected]}>
+                <Text style={[styles.segmentText, kind === k && styles.segmentTextSelected]}>
                   {k === "habit" ? "Habit" : "Task"}
                 </Text>
               </Pressable>
             ))}
           </View>
-        </View>
-      )}
+        )}
 
-      <View style={styles.row}>
-        <Text style={styles.label}>Icon</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.emojiRow}>
-            {EMOJI_CHOICES.map((e) => (
+        <View style={styles.row}>
+          <Text style={styles.label}>Icon</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.emojiRow}>
+              {EMOJI_CHOICES.map((e) => (
+                <HardShadow
+                  key={e}
+                  style={[
+                    styles.emojiBtn,
+                    emoji === e && [styles.emojiBtnSelected, { backgroundColor: DIFF_LIGHT_TINT[difficulty] }],
+                  ]}
+                  onPress={() => setEmoji(e)}
+                >
+                  <Text style={styles.emojiText}>{e}</Text>
+                </HardShadow>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        <View style={styles.row}>
+          <Text style={styles.label}>Difficulty</Text>
+          <View style={styles.diffRow}>
+            {DIFFICULTIES.map((d) => (
               <Pressable
-                key={e}
-                style={[styles.emojiBtn, emoji === e && styles.emojiBtnSelected]}
-                onPress={() => setEmoji(e)}
+                key={d.value}
+                style={[
+                  styles.diffBtn,
+                  difficulty === d.value && { backgroundColor: DIFF_TINT[d.value], borderWidth: theme.border },
+                ]}
+                onPress={() => selectDifficulty(d.value)}
               >
-                <Text style={styles.emojiText}>{e}</Text>
+                <Text style={[styles.diffText, difficulty === d.value && styles.diffTextSelected]}>{d.label}</Text>
               </Pressable>
             ))}
           </View>
-        </ScrollView>
-      </View>
-
-      <View style={styles.row}>
-        <Text style={styles.label}>Effort</Text>
-        <View style={styles.buttonRow}>
-          {DIFFICULTIES.map((d) => (
-            <Pressable
-              key={d}
-              style={[styles.diffBtn, difficulty === d && { backgroundColor: DIFF_TINT[d] }]}
-              onPress={() => selectDifficulty(d)}
-            >
-              <Text style={[styles.diffText, difficulty === d && styles.diffTextSelected]}>{d}</Text>
-            </Pressable>
-          ))}
         </View>
-      </View>
 
-      {kind === "habit" && (
-        <>
-          <View style={styles.row}>
-            <Text style={styles.label}>Coins</Text>
-            <TextInput
-              style={styles.coinInput}
-              value={coinValue}
-              onChangeText={setCoinValue}
-              keyboardType="number-pad"
-            />
-          </View>
-
-          <View style={styles.row}>
-            <Text style={styles.label}>Schedule</Text>
-            <View style={styles.scheduleRow}>
-              {(["daily", "specific", "weekly", "monthly"] as const).map((s) => (
-                <Pressable
-                  key={s}
-                  style={[styles.scheduleBtn, scheduleMode === s && styles.choiceBtnSelected]}
-                  onPress={() => selectScheduleMode(s)}
-                >
-                  <Text style={[styles.choiceText, scheduleMode === s && styles.choiceTextSelected]}>
-                    {s === "daily" ? "Every day" : s === "specific" ? "Specific days" : s === "weekly" ? "Weekly" : "Monthly"}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {scheduleMode === "specific" && (
-            <View style={styles.weekdayRow}>
-              {WEEKDAY_LABELS.map((label, i) => (
-                <Pressable
-                  key={label}
-                  style={[styles.weekdayBtn, weekdays.includes(i) && styles.weekdayBtnSelected]}
-                  onPress={() => toggleWeekday(i)}
-                >
-                  <Text style={[styles.weekdayText, weekdays.includes(i) && styles.weekdayTextSelected]}>
-                    {label[0]}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {isRecurrence && (
+        {kind === "habit" && (
+          <>
             <View style={styles.row}>
-              <Text style={styles.label}>{scheduleMode === "weekly" ? "Times per week" : "Times per month"}</Text>
-              <TextInput style={styles.coinInput} value={quota} onChangeText={setQuota} keyboardType="number-pad" />
-              {!hasRecurrenceLevel && (
-                <Text style={styles.hint}>
-                  Reach level {RECURRENCE_LEVEL} for weekly/monthly habits — you're level {level}.
-                </Text>
+              <Text style={styles.label}>Coins</Text>
+              <View style={styles.stepper}>
+                <Pressable style={styles.stepperBtn} onPress={() => setCoinValue((v) => Math.max(1, v - 1))}>
+                  <Text style={styles.stepperBtnText}>−</Text>
+                </Pressable>
+                <Text style={styles.stepperValue}>{coinValue}</Text>
+                <Pressable style={styles.stepperBtn} onPress={() => setCoinValue((v) => v + 1)}>
+                  <Text style={styles.stepperBtnText}>＋</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.row}>
+              <Text style={styles.label}>Schedule</Text>
+              <View style={styles.segmented}>
+                {(["daily", "specific", "weekly", "monthly"] as const).map((s) => (
+                  <Pressable
+                    key={s}
+                    style={[styles.segment, scheduleMode === s && styles.segmentSelected]}
+                    onPress={() => selectScheduleMode(s)}
+                  >
+                    <Text style={[styles.segmentText, scheduleMode === s && styles.segmentTextSelected]}>
+                      {s === "daily" ? "Every day" : s === "specific" ? "Specific days" : s === "weekly" ? "Weekly" : "Monthly"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {scheduleMode === "specific" && (
+                <View style={styles.weekdayRow}>
+                  {WEEKDAY_LABELS.map((label, i) => (
+                    <Pressable
+                      key={label}
+                      style={[styles.weekdayBtn, weekdays.includes(i) && styles.weekdayBtnSelected]}
+                      onPress={() => toggleWeekday(i)}
+                    >
+                      <Text style={[styles.weekdayText, weekdays.includes(i) && styles.weekdayTextSelected]}>
+                        {label[0]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              {isRecurrence && (
+                <View style={styles.quotaRow}>
+                  <Text style={styles.label}>{scheduleMode === "weekly" ? "Times per week" : "Times per month"}</Text>
+                  <TextInput style={styles.quotaInput} value={quota} onChangeText={setQuota} keyboardType="number-pad" />
+                  {!hasRecurrenceLevel && (
+                    <Text style={styles.hint}>
+                      Reach level {RECURRENCE_LEVEL} for weekly/monthly habits — you're level {level}.
+                    </Text>
+                  )}
+                </View>
               )}
             </View>
-          )}
-        </>
-      )}
+          </>
+        )}
+      </HardShadow>
+
+      <View style={styles.row}>
+        <Text style={styles.previewLabel}>↓ Live preview</Text>
+        <TrackableCard
+          trackable={previewTrackable}
+          status={previewStatus}
+          onEdit={() => {}}
+          onArchive={() => {}}
+          onToggleComplete={() => {}}
+        />
+      </View>
 
       <View style={styles.actionsRow}>
-        <Pressable style={styles.ghostBtn} onPress={onCancel}>
+        <HardShadow style={styles.ghostBtn} onPress={onCancel}>
           <Text style={styles.ghostText}>Cancel</Text>
-        </Pressable>
-        <Pressable
+        </HardShadow>
+        <HardShadow
           style={[styles.primaryBtn, !canSubmit && styles.primaryBtnDisabled]}
           disabled={!canSubmit || submitting}
           onPress={submit}
         >
-          <Text style={styles.primaryText}>{mode === "add" ? "Add it" : "Save"}</Text>
-        </Pressable>
+          <Text style={styles.primaryText}>{mode === "add" ? `Save ${kind}` : "Save"}</Text>
+        </HardShadow>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: { gap: 14 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerTitle: { fontSize: 20, fontWeight: "800", color: theme.color.ink, fontFamily: fonts.display700 },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderWidth: 2.5,
+    borderColor: theme.color.ink,
+    backgroundColor: "#fff",
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeBtnText: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display700 },
   panel: {
     backgroundColor: theme.color.card,
     borderWidth: theme.border,
     borderColor: theme.color.ink,
     borderRadius: theme.radius,
-    padding: 14,
-    gap: 12,
-  },
-  input: {
-    fontWeight: "600",
-    fontSize: 16,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 10,
-    padding: 10,
-    backgroundColor: "#fff",
-    color: theme.color.ink,
+    padding: 15,
+    gap: 15,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 5, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 5,
   },
   row: { gap: 7 },
-  label: { fontSize: 12, fontWeight: "700", opacity: 0.6, color: theme.color.ink },
-  buttonRow: { flexDirection: "row", gap: 8 },
-  choiceBtn: {
-    flex: 1,
-    borderWidth: 2,
+  label: { fontSize: 10, fontWeight: "700", color: "rgba(26,21,35,0.6)", textTransform: "uppercase", letterSpacing: 0.5, fontFamily: fonts.mono700 },
+  input: {
+    fontWeight: "600",
+    fontSize: 15,
+    borderWidth: 2.5,
     borderColor: theme.color.ink,
-    borderRadius: 9,
-    paddingVertical: 9,
-    alignItems: "center",
-    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 11,
+    backgroundColor: theme.color.paper,
+    color: theme.color.ink,
+    fontFamily: fonts.display600,
   },
-  choiceBtnSelected: { backgroundColor: theme.color.violet },
-  choiceText: { fontWeight: "700", fontSize: 13, color: theme.color.ink },
-  choiceTextSelected: { color: "#fff" },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: theme.color.paper,
+    borderWidth: 2.5,
+    borderColor: theme.color.ink,
+    borderRadius: 11,
+    padding: 4,
+    gap: 4,
+  },
+  segment: { flex: 1, alignItems: "center", paddingVertical: 9, borderRadius: 8 },
+  segmentSelected: { backgroundColor: theme.color.violet },
+  segmentText: { fontWeight: "700", fontSize: 13, color: "rgba(26,21,35,0.55)", fontFamily: fonts.display700 },
+  segmentTextSelected: { color: "#fff" },
   emojiRow: { flexDirection: "row", gap: 7 },
   emojiBtn: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 9,
+    borderColor: "rgba(26,21,35,0.25)",
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
   },
-  emojiBtnSelected: { backgroundColor: theme.color.yellow },
-  emojiText: { fontSize: 18 },
+  emojiBtnSelected: {
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  emojiText: { fontSize: 20 },
+  diffRow: { flexDirection: "row", gap: 8 },
   diffBtn: {
     flex: 1,
     borderWidth: 2,
-    borderColor: theme.color.ink,
+    borderColor: "rgba(26,21,35,0.25)",
     borderRadius: 9,
     paddingVertical: 9,
     alignItems: "center",
-    backgroundColor: "#fff",
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
   },
-  diffText: { fontWeight: "700", fontSize: 13, color: theme.color.ink, textTransform: "capitalize" },
-  diffTextSelected: { color: "#fff" },
-  coinInput: {
+  diffText: { fontWeight: "700", fontSize: 12, color: "rgba(26,21,35,0.55)", fontFamily: fonts.mono700 },
+  diffTextSelected: { color: theme.color.ink },
+  stepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 2.5,
+    borderColor: theme.color.ink,
+    borderRadius: 10,
+    backgroundColor: theme.color.paper,
+    overflow: "hidden",
+    alignSelf: "flex-start",
+  },
+  stepperBtn: { width: 36, height: 40, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
+  stepperBtnText: { fontWeight: "700", fontSize: 18, color: theme.color.ink, fontFamily: fonts.display700 },
+  stepperValue: { width: 50, textAlign: "center", fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.mono700 },
+  weekdayRow: { flexDirection: "row", gap: 6, justifyContent: "space-between" },
+  weekdayBtn: {
+    flex: 1,
+    aspectRatio: 1,
+    borderWidth: 2,
+    borderColor: "rgba(26,21,35,0.25)",
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  weekdayBtnSelected: { borderWidth: theme.border, borderColor: theme.color.ink, backgroundColor: theme.color.violet },
+  weekdayText: { fontWeight: "700", fontSize: 12, color: "rgba(26,21,35,0.5)", fontFamily: fonts.mono700 },
+  weekdayTextSelected: { color: "#fff" },
+  quotaRow: { gap: 7, marginTop: 4 },
+  quotaInput: {
     fontWeight: "700",
     fontSize: 15,
     borderWidth: 2,
@@ -297,44 +412,42 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     color: theme.color.ink,
     width: 90,
-  },
-  scheduleRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  scheduleBtn: {
-    minWidth: "46%",
-    flexGrow: 1,
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 9,
-    paddingVertical: 9,
-    alignItems: "center",
-    backgroundColor: "#fff",
+    fontFamily: fonts.mono700,
   },
   hint: { fontSize: 12, fontWeight: "600", color: theme.color.fire },
-  weekdayRow: { flexDirection: "row", gap: 6 },
-  weekdayBtn: {
+  previewLabel: { fontSize: 10, fontWeight: "700", color: theme.color.violet, textTransform: "uppercase", letterSpacing: 1, fontFamily: fonts.mono700 },
+  actionsRow: { flexDirection: "row", gap: 12, marginTop: 2 },
+  ghostBtn: {
     flex: 1,
-    height: 34,
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 9,
+    height: 50,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
-  },
-  weekdayBtnSelected: { backgroundColor: theme.color.jade },
-  weekdayText: { fontWeight: "700", fontSize: 12, color: theme.color.ink },
-  weekdayTextSelected: { color: "#fff" },
-  actionsRow: { flexDirection: "row", gap: 10, justifyContent: "flex-end" },
-  ghostBtn: { paddingVertical: 9, paddingHorizontal: 16, borderRadius: 10, borderWidth: theme.border, borderColor: theme.color.ink, backgroundColor: "#fff" },
-  ghostText: { fontWeight: "700", fontSize: 14, color: theme.color.ink },
-  primaryBtn: {
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: theme.border,
     borderColor: theme.color.ink,
-    backgroundColor: theme.color.violet,
+    backgroundColor: "#fff",
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  ghostText: { fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
+  primaryBtn: {
+    flex: 1.4,
+    height: 50,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    backgroundColor: theme.color.jade,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
   },
   primaryBtnDisabled: { opacity: 0.4 },
-  primaryText: { fontWeight: "700", fontSize: 14, color: "#fff" },
+  primaryText: { fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
 });

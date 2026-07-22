@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
-import { Plus, LogOut, Snowflake } from "lucide-react-native";
-import { useAuth } from "@/features/auth/useAuth";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { View, Text, Pressable, Image, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { router } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
+import Svg, { Circle, Path } from "react-native-svg";
+import { useAddAction } from "@/features/navigation/addAction";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useTrackablesQuery, useCreateTrackable, useUpdateTrackable, useArchiveTrackable } from "@/features/trackables/useTrackables";
@@ -21,11 +23,12 @@ import { LevelBar } from "@/features/completions/components/LevelBar";
 import { useFloatingXp, FloatingXpOverlay } from "@/features/completions/components/FloatingXp";
 import { LevelUpOverlay } from "@/features/completions/components/LevelUpOverlay";
 import { UndoToast } from "@/features/completions/components/UndoToast";
+import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
+import { HardShadow } from "@/components/HardShadow";
 
 type PanelState = { mode: "add" } | { mode: "edit"; trackable: Trackable } | null;
 
 export default function Home() {
-  const signOut = useAuth((s) => s.signOut);
   const { data: trackables, isLoading, error } = useTrackablesQuery();
   const { data: completions } = useCompletionsQuery();
   const { data: coinBalance } = useCoinBalanceQuery();
@@ -36,10 +39,12 @@ export default function Home() {
   const completeMutation = useCompleteTrackable();
   const undoMutation = useUndoCompletion();
   const [panel, setPanel] = useState<PanelState>(null);
-  const [levelUp, setLevelUp] = useState<number | null>(null);
+  const [levelUp, setLevelUp] = useState<{ level: number; freezeGained: number } | null>(null);
   const [undoToastFor, setUndoToastFor] = useState<Trackable | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ trackable: Trackable; streak: number } | null>(null);
   const { floats, spawn, remove } = useFloatingXp();
   const lastKnownLevel = useRef<number | null>(null);
+  const lastKnownFreeze = useRef<number | null>(null);
 
   const todayStr = today();
   const dueToday = trackables ? filterDueToday(trackables, todayStr) : [];
@@ -50,7 +55,19 @@ export default function Home() {
     if (lastKnownLevel.current === null) lastKnownLevel.current = progress.level;
   }, [progress.level]);
 
-  const handleToggleComplete = (t: Trackable, isDoneToday: boolean) => {
+  useEffect(() => {
+    if (lastKnownFreeze.current === null && freezeBalance !== undefined) lastKnownFreeze.current = freezeBalance;
+  }, [freezeBalance]);
+
+  const setAddHandler = useAddAction((s) => s.setHandler);
+  useFocusEffect(
+    useCallback(() => {
+      setAddHandler(() => setPanel({ mode: "add" }));
+      return () => setAddHandler(null);
+    }, [setAddHandler])
+  );
+
+  const handleToggleComplete = (t: Trackable, isDoneToday: boolean, anchor: { x: number; y: number }) => {
     if (isDoneToday) {
       undoMutation.mutate(t.id, {
         onError: (e: Error) => Alert.alert("Couldn't undo that", e.message),
@@ -59,37 +76,51 @@ export default function Home() {
     }
     completeMutation.mutate(t.id, {
       onSuccess: (result) => {
-        if (result.xp > 0) spawn(result.xp);
+        if (result.xp > 0) spawn(result.xp, anchor);
         if (lastKnownLevel.current !== null && result.level.level > lastKnownLevel.current) {
-          setLevelUp(result.level.level);
+          const freezeGained = Math.max(0, result.freezeTokens - (lastKnownFreeze.current ?? result.freezeTokens));
+          setLevelUp({ level: result.level.level, freezeGained });
         }
         lastKnownLevel.current = result.level.level;
+        lastKnownFreeze.current = result.freezeTokens;
         if (t.kind === "task") setUndoToastFor(t);
       },
       onError: (e: Error) => Alert.alert("Couldn't complete that", e.message),
     });
   };
 
+  const dueStatuses = dueToday.map((t) => trackableStatus(t, allCompletions, todayStr));
+  const doneCount = dueStatuses.filter((s) => s.isDoneToday).length;
+  const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+
   return (
     <View style={styles.root}>
       <View style={styles.header}>
         <View style={styles.topRow}>
-          <Text style={styles.logo}>HABITEER</Text>
-          <View style={styles.headerRight}>
-            <View style={styles.statBadge}>
-              <Text style={styles.statText}>🪙 {coinBalance ?? 0}</Text>
-            </View>
-            <View style={styles.statBadge}>
-              <Snowflake size={13} strokeWidth={3} color={theme.color.violet} />
-              <Text style={styles.statText}>{freezeBalance ?? 0}</Text>
-            </View>
-            <Pressable style={styles.signOutBtn} onPress={signOut} aria-label="Sign out">
-              <LogOut size={16} strokeWidth={3} color={theme.color.ink} />
-            </Pressable>
+          <Image source={require("../../assets/icon.png")} style={styles.iconMark} />
+          <Text style={styles.logo}>Habiteer</Text>
+          <HardShadow style={styles.coinBadge}>
+            <Text style={styles.coinText}>🪙 {coinBalance ?? 0}</Text>
+          </HardShadow>
+          <View style={styles.freezeBadge}>
+            <Text style={styles.freezeText}>❄️ {freezeBalance ?? 0}</Text>
           </View>
+          <Pressable style={styles.avatarBtn} onPress={() => router.navigate("/profile")} aria-label="Open profile">
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+              <Circle cx="12" cy="8" r="4" />
+              <Path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+            </Svg>
+          </Pressable>
         </View>
         <LevelBar level={progress.level} intoLevel={progress.intoLevel} need={progress.need} />
-        <FloatingXpOverlay floats={floats} onDone={remove} />
+        <View style={styles.dateRow}>
+          <Text style={styles.dateLabel}>{dateLabel}</Text>
+          {dueToday.length > 0 && (
+            <Text style={styles.doneCount}>
+              {doneCount} / {dueToday.length} done
+            </Text>
+          )}
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -98,6 +129,7 @@ export default function Home() {
 
         {undoToastFor && (
           <UndoToast
+            name={undoToastFor.name}
             onUndo={() => {
               undoMutation.mutate(undoToastFor.id, {
                 onError: (e: Error) => Alert.alert("Couldn't undo that", e.message),
@@ -107,9 +139,20 @@ export default function Home() {
           />
         )}
 
+        {!isLoading && !error && trackables?.length === 0 && !panel && (
+          <View style={styles.empty}>
+            <Image source={require("../../assets/icon.png")} style={styles.emptyIcon} />
+            <Text style={styles.emptyTitle}>No habits yet</Text>
+            <Text style={styles.emptyBody}>Add your first habit and start stacking streaks.</Text>
+            <HardShadow style={styles.emptyBtn} onPress={() => setPanel({ mode: "add" })}>
+              <Text style={styles.emptyBtnText}>＋ Add a habit</Text>
+            </HardShadow>
+          </View>
+        )}
+
         <View style={styles.list}>
-          {dueToday.map((t) => {
-            const status = trackableStatus(t, allCompletions, todayStr);
+          {dueToday.map((t, i) => {
+            const status = dueStatuses[i];
             return (
               <TrackableCard
                 key={t.id}
@@ -117,8 +160,8 @@ export default function Home() {
                 status={status}
                 completing={completeMutation.isPending || undoMutation.isPending}
                 onEdit={() => setPanel({ mode: "edit", trackable: t })}
-                onArchive={() => archiveMutation.mutate(t.id)}
-                onToggleComplete={() => handleToggleComplete(t, status.isDoneToday)}
+                onArchive={() => setDeleteConfirm({ trackable: t, streak: status.streak })}
+                onToggleComplete={(x, y) => handleToggleComplete(t, status.isDoneToday, { x, y })}
               />
             );
           })}
@@ -157,15 +200,27 @@ export default function Home() {
           />
         )}
 
-        {!panel && (
-          <Pressable style={styles.addBtn} onPress={() => setPanel({ mode: "add" })}>
-            <Plus size={18} strokeWidth={3} color={theme.color.ink} />
-            <Text style={styles.addText}>Add habit or task</Text>
-          </Pressable>
-        )}
       </ScrollView>
 
-      {levelUp !== null && <LevelUpOverlay level={levelUp} onClose={() => setLevelUp(null)} />}
+      <FloatingXpOverlay floats={floats} onDone={remove} />
+      {levelUp !== null && (
+        <LevelUpOverlay level={levelUp.level} freezeGained={levelUp.freezeGained} onClose={() => setLevelUp(null)} />
+      )}
+      {deleteConfirm && (
+        <DeleteConfirmModal
+          visible
+          name={deleteConfirm.trackable.name}
+          streakDays={deleteConfirm.streak}
+          onCancel={() => setDeleteConfirm(null)}
+          onConfirm={() => {
+            const t = deleteConfirm.trackable;
+            setDeleteConfirm(null);
+            archiveMutation.mutate(t.id, {
+              onError: (e: Error) => Alert.alert("Couldn't delete that", e.message),
+            });
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -178,45 +233,84 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     gap: 10,
   },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  logo: { fontSize: 22, fontWeight: "800", color: theme.color.ink, letterSpacing: -0.5, fontFamily: fonts.display700 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 6 },
-  statBadge: {
+  topRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  iconMark: { width: 34, height: 34, borderRadius: 9, borderWidth: 2.5, borderColor: theme.color.ink },
+  logo: { flex: 1, fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: -0.5, fontFamily: fonts.display700 },
+  // Coins dominate the header (filled yellow, hard offset shadow, larger mono) —
+  // the payout the whole product thesis is built around gets top visual weight.
+  coinBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: 11,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    backgroundColor: theme.color.yellow,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  coinText: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.mono700 },
+  // Freeze tokens step down to a plain outline chip, no fill.
+  freezeBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
     borderWidth: 2,
     borderColor: theme.color.ink,
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
+    borderRadius: 9,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     backgroundColor: theme.color.card,
   },
-  statText: { fontWeight: "700", fontSize: 12, color: theme.color.ink, fontFamily: fonts.mono700 },
-  signOutBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    borderWidth: theme.border,
+  freezeText: { fontWeight: "700", fontSize: 12, color: theme.color.ink, fontFamily: fonts.mono700 },
+  avatarBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 2.5,
     borderColor: theme.color.ink,
-    backgroundColor: theme.color.card,
+    backgroundColor: theme.color.violet,
     alignItems: "center",
     justifyContent: "center",
   },
+  dateRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
+  dateLabel: { fontSize: 16, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.display700 },
+  doneCount: { fontSize: 12, fontWeight: "700", color: theme.color.jade, fontFamily: fonts.mono700 },
   scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
   list: { gap: 12 },
   error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
-  addBtn: {
-    flexDirection: "row",
+  empty: {
     alignItems: "center",
+    gap: 9,
+    borderWidth: 3,
+    borderStyle: "dashed",
+    borderColor: "rgba(26,21,35,0.35)",
+    borderRadius: 12,
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+  },
+  emptyIcon: { width: 52, height: 52, borderRadius: 13, borderWidth: theme.border, borderColor: theme.color.ink },
+  emptyTitle: { fontSize: 16, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.display700 },
+  emptyBody: { fontSize: 12.5, lineHeight: 19, color: theme.color.ink, opacity: 0.6, textAlign: "center" },
+  emptyBtn: {
+    marginTop: 4,
+    height: 42,
+    paddingHorizontal: 18,
     justifyContent: "center",
-    gap: 8,
+    backgroundColor: theme.color.violet,
     borderWidth: theme.border,
     borderColor: theme.color.ink,
-    borderStyle: "dashed",
-    borderRadius: theme.radius,
-    paddingVertical: 14,
-    backgroundColor: theme.color.card,
+    borderRadius: 10,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
-  addText: { fontWeight: "700", fontSize: 15, color: theme.color.ink },
+  emptyBtnText: { color: "#fff", fontWeight: "700", fontSize: 14, fontFamily: fonts.display700 },
 });

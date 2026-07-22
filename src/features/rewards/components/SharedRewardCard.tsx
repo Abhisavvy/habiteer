@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import type { SharedReward } from "../api";
@@ -19,7 +20,7 @@ export function SharedRewardCard({
   const canContribute = !unlocked && Number(amount) > 0;
 
   return (
-    <View style={styles.card}>
+    <HardShadow style={styles.card}>
       <View style={styles.topRow}>
         <View style={styles.emojiBox}>
           <Text style={styles.emoji}>{reward.emoji}</Text>
@@ -36,7 +37,7 @@ export function SharedRewardCard({
       </View>
 
       <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+        <View style={[styles.progressFill, { width: `${progress * 100}%` }, progress >= 1 && styles.progressFillFull]} />
       </View>
 
       {!unlocked && (
@@ -44,11 +45,12 @@ export function SharedRewardCard({
           <TextInput
             style={styles.amountInput}
             placeholder="Coins"
+            placeholderTextColor="rgba(26,21,35,0.4)"
             value={amount}
             onChangeText={setAmount}
             keyboardType="number-pad"
           />
-          <Pressable
+          <HardShadow
             style={[styles.contributeBtn, !canContribute && styles.contributeBtnDisabled]}
             disabled={!canContribute || contributing}
             onPress={() => {
@@ -57,10 +59,10 @@ export function SharedRewardCard({
             }}
           >
             <Text style={styles.contributeText}>Chip in</Text>
-          </Pressable>
+          </HardShadow>
         </View>
       )}
-    </View>
+    </HardShadow>
   );
 }
 
@@ -70,8 +72,13 @@ const styles = StyleSheet.create({
     borderWidth: theme.border,
     borderColor: theme.color.ink,
     borderRadius: theme.radius,
-    padding: 12,
+    padding: 13,
     gap: 10,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 5, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 5,
   },
   topRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   emojiBox: {
@@ -79,56 +86,63 @@ const styles = StyleSheet.create({
     height: 46,
     borderWidth: theme.border,
     borderColor: theme.color.ink,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.color.yellow,
   },
   emoji: { fontSize: 22 },
   body: { flex: 1, minWidth: 0 },
-  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display600 },
-  cost: { fontSize: 12, fontWeight: "700", color: theme.color.ink, marginTop: 2, fontFamily: fonts.mono700 },
+  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display700 },
+  cost: { fontSize: 13, fontWeight: "700", color: theme.color.violet, marginTop: 2, fontFamily: fonts.mono700 },
   unlockedBadge: {
     fontSize: 11,
-    fontWeight: "800",
-    color: "#fff",
+    fontWeight: "700",
+    color: theme.color.ink,
     backgroundColor: theme.color.jade,
     borderWidth: 2,
     borderColor: theme.color.ink,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
+    fontFamily: fonts.mono700,
   },
   progressTrack: {
-    height: 12,
-    borderWidth: 2,
+    height: 14,
+    borderWidth: theme.border,
     borderColor: theme.color.ink,
-    borderRadius: 6,
-    backgroundColor: theme.color.paper,
+    borderRadius: 999,
+    backgroundColor: "#fff",
     overflow: "hidden",
   },
-  progressFill: { height: "100%", backgroundColor: theme.color.jade },
+  progressFill: { height: "100%", backgroundColor: theme.color.jade, borderRightWidth: theme.border, borderRightColor: theme.color.ink },
+  progressFillFull: { borderRightWidth: 0 },
   contributeRow: { flexDirection: "row", gap: 8 },
   amountInput: {
     flex: 1,
-    fontWeight: "700",
+    fontWeight: "600",
     fontSize: 14,
-    borderWidth: 2,
+    borderWidth: 2.5,
     borderColor: theme.color.ink,
-    borderRadius: 9,
-    padding: 8,
-    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 9,
+    backgroundColor: theme.color.paper,
     color: theme.color.ink,
+    fontFamily: fonts.display600,
   },
   contributeBtn: {
     justifyContent: "center",
-    paddingVertical: 9,
     paddingHorizontal: 16,
     borderRadius: 10,
     borderWidth: theme.border,
     borderColor: theme.color.ink,
     backgroundColor: theme.color.violet,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
   contributeBtnDisabled: { opacity: 0.4 },
-  contributeText: { fontWeight: "700", fontSize: 13, color: "#fff" },
+  contributeText: { fontWeight: "700", fontSize: 13, color: "#fff", fontFamily: fonts.display700 },
 });

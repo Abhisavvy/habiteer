@@ -3,11 +3,45 @@ import { View, StyleSheet, Animated, AccessibilityInfo, Easing } from "react-nat
 import { theme } from "@/constants/theme";
 
 /**
- * Custom splash matching the app icon (direction 1d — "Level-up H"): the
- * two bars rise into place ("ascending"), then the yellow cap pops in,
- * before handing off to the real app. Falls back to a static (no-animation)
- * render of the same icon when the OS reduce-motion setting is on.
+ * Custom splash matching the app icon exactly (direction 1d — "Level-up H"):
+ * same violet badge frame, paper-fill/ink-outline H, yellow cap — not a
+ * simplified stand-in. The two legs rise into place ("ascending"), then the
+ * yellow cap pops in, before handing off to the real app. Falls back to a
+ * static (no-animation) render of the same icon when the OS reduce-motion
+ * setting is on.
+ *
+ * Geometry is lifted directly from the icon's own SVG spec (gen-icon.js):
+ * a 100x100 viewBox, badge inset 4 units with a 5-unit stroke, H decomposed
+ * into 3 rects (legs + crossbar), cap as a 4th rect overlapping the right
+ * leg's top. Coordinates below are shifted by -4 so (0,0) is the badge's
+ * own inner corner, then scaled by BOX_UNIT to pixels. Each bar's own
+ * border does the "ink outline + paper fill" look in one view — RN's
+ * border-box model already insets the fill by the border width, matching
+ * the icon's stroked-rect look closely enough for a brief intro animation.
  */
+const BADGE_SIZE = 168; // px, the badge's own outer edge (border-box)
+const BOX_UNIT = BADGE_SIZE / 100; // viewBox units -> px
+const STROKE = 5 * BOX_UNIT;
+const CAP_STROKE = 3 * BOX_UNIT;
+const BADGE_RADIUS = 22 * BOX_UNIT;
+const BADGE_BOX = 92 * BOX_UNIT; // the icon's own 92x92 box (viewBox already inset by its own 4-unit margin)
+
+// Rects in the shifted (badge-local, margin already excluded) coordinate
+// space, in viewBox units — matches gen-icon.js's LEFT/RIGHT/CROSSBAR/CAP.
+const LEFT = { x0: 26, x1: 39, y0: 36, y1: 70 };
+const RIGHT = { x0: 53, x1: 66, y0: 20, y1: 70 };
+const CROSSBAR = { x0: 39, x1: 53, y0: 44, y1: 52 };
+const CAP = { x0: 53, x1: 66, y0: 20, y1: 31 };
+
+function px(r: { x0: number; x1: number; y0: number; y1: number }) {
+  return {
+    left: r.x0 * BOX_UNIT,
+    top: r.y0 * BOX_UNIT,
+    width: (r.x1 - r.x0) * BOX_UNIT,
+    height: (r.y1 - r.y0) * BOX_UNIT,
+  };
+}
+
 export function AppSplash({ onDone }: { onDone: () => void }) {
   const leftScale = useRef(new Animated.Value(0)).current;
   const rightScale = useRef(new Animated.Value(0)).current;
@@ -47,20 +81,15 @@ export function AppSplash({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.root, { opacity: fade }]}>
-      <View style={styles.h}>
-        <Animated.View style={[styles.leg, styles.legLeft, { transform: [{ scaleY: leftScale }] }]} />
-        <Animated.View style={[styles.leg, styles.legRight, { transform: [{ scaleY: rightScale }] }]} />
-        <View style={styles.crossbar} />
-        <Animated.View style={[styles.cap, { transform: [{ scale: capScale }] }]} />
+      <View style={styles.badge}>
+        <Animated.View style={[styles.leg, px(LEFT), { transform: [{ scaleY: leftScale }], transformOrigin: "bottom" }]} />
+        <Animated.View style={[styles.leg, px(RIGHT), { transform: [{ scaleY: rightScale }], transformOrigin: "bottom" }]} />
+        <View style={[styles.crossbar, px(CROSSBAR)]} />
+        <Animated.View style={[styles.cap, px(CAP), { transform: [{ scale: capScale }] }]} />
       </View>
     </Animated.View>
   );
 }
-
-const LEG_WIDTH = 26;
-const LEFT_HEIGHT = 96;
-const RIGHT_HEIGHT = 140;
-const GAP = 48;
 
 const styles = StyleSheet.create({
   root: {
@@ -74,24 +103,32 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     zIndex: 100,
   },
-  h: { width: LEG_WIDTH * 2 + GAP, height: RIGHT_HEIGHT, position: "relative" },
-  leg: { position: "absolute", width: LEG_WIDTH, backgroundColor: theme.color.ink, bottom: 0 },
-  legLeft: { left: 0, height: LEFT_HEIGHT },
-  legRight: { left: LEG_WIDTH + GAP, height: RIGHT_HEIGHT },
+  badge: {
+    width: BADGE_BOX,
+    height: BADGE_BOX,
+    borderRadius: BADGE_RADIUS,
+    borderWidth: STROKE,
+    borderColor: theme.color.ink,
+    backgroundColor: theme.color.violet,
+  },
+  leg: {
+    position: "absolute",
+    backgroundColor: theme.color.paper,
+    borderWidth: STROKE,
+    borderColor: theme.color.ink,
+    borderRadius: 3 * BOX_UNIT,
+  },
   crossbar: {
     position: "absolute",
-    left: LEG_WIDTH,
-    width: GAP,
-    height: LEG_WIDTH,
-    backgroundColor: theme.color.ink,
-    bottom: LEFT_HEIGHT / 2 - LEG_WIDTH / 2,
+    backgroundColor: theme.color.paper,
+    borderWidth: STROKE,
+    borderColor: theme.color.ink,
+    borderRadius: 3 * BOX_UNIT,
   },
   cap: {
     position: "absolute",
-    left: LEG_WIDTH + GAP - 10,
-    width: LEG_WIDTH + 20,
-    height: 18,
     backgroundColor: theme.color.yellow,
-    top: 0,
+    borderWidth: CAP_STROKE,
+    borderColor: theme.color.ink,
   },
 });

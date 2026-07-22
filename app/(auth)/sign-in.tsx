@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, Image, StyleSheet, Alert, ActivityIndicator } from "react-native";
 import { Eye, EyeOff } from "lucide-react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as QueryParams from "expo-auth-session/build/QueryParams";
 import { supabase } from "@/lib/supabase/client";
+import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 
@@ -57,56 +58,159 @@ export default function SignIn() {
 
   return (
     <View style={styles.root}>
-      <Text style={styles.logo}>HABITEER</Text>
-      <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#8A8395" autoCapitalize="none"
-        keyboardType="email-address" value={email} onChangeText={setEmail} />
-      <View style={styles.passwordWrap}>
-        <TextInput
-          style={[styles.input, styles.passwordInput]}
-          placeholder="Password"
-          placeholderTextColor="#8A8395"
-          secureTextEntry={!showPassword}
-          value={password}
-          onChangeText={setPassword}
-        />
-        <Pressable
-          style={styles.eyeBtn}
-          onPress={() => setShowPassword((s) => !s)}
-          aria-label={showPassword ? "Hide password" : "Show password"}
-        >
-          {showPassword ? (
-            <EyeOff size={20} strokeWidth={2} color={theme.color.ink} />
-          ) : (
-            <Eye size={20} strokeWidth={2} color={theme.color.ink} />
-          )}
+      <View style={styles.topBlock}>
+        <HardShadow style={styles.icon}>
+          <Image source={require("../../assets/icon.png")} style={styles.iconImage} />
+        </HardShadow>
+        <Text style={styles.wordmark}>Habiteer</Text>
+        <Text style={styles.tagline}>Level up your day.</Text>
+      </View>
+
+      <View style={styles.formBlock}>
+        <View style={styles.field}>
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            style={styles.input}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Password</Text>
+          <View style={styles.passwordWrap}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <Pressable
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword((s) => !s)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? (
+                <EyeOff size={19} strokeWidth={2} color="rgba(26,21,35,0.5)" />
+              ) : (
+                <Eye size={19} strokeWidth={2} color="rgba(26,21,35,0.5)" />
+              )}
+            </Pressable>
+          </View>
+        </View>
+
+        <HardShadow style={styles.signInBtn} disabled={busy} onPress={() => withEmail("in")}>
+          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.signInText}>Sign in</Text>}
+        </HardShadow>
+
+        <HardShadow style={styles.createBtn} disabled={busy} onPress={() => withEmail("up")}>
+          <Text style={styles.createText}>Create account</Text>
+        </HardShadow>
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <Pressable style={styles.googleBtn} onPress={withGoogle}>
+          <Text style={styles.googleText}>
+            <Text style={styles.googleG}>G</Text> Continue with Google
+          </Text>
         </Pressable>
       </View>
-      <Pressable style={styles.primary} disabled={busy} onPress={() => withEmail("in")}>
-        <Text style={styles.primaryText}>Sign in</Text>
-      </Pressable>
-      <Pressable style={styles.ghost} disabled={busy} onPress={() => withEmail("up")}>
-        <Text style={styles.ghostText}>Create account</Text>
-      </Pressable>
-      <Pressable style={styles.google} onPress={withGoogle}>
-        <Text style={styles.primaryText}>Continue with Google</Text>
-      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: "center", padding: 24, gap: 12, backgroundColor: theme.color.paper },
-  logo: { fontSize: 34, fontWeight: "800", color: theme.color.ink, marginBottom: 12, fontFamily: fonts.display700 },
-  input: { borderWidth: theme.border, borderColor: theme.color.ink, borderRadius: 10,
-    padding: 12, backgroundColor: "#fff", fontSize: 16, color: theme.color.ink },
+  root: { flex: 1, backgroundColor: theme.color.paper, paddingHorizontal: 22 },
+  topBlock: { flex: 1, justifyContent: "center", alignItems: "center", gap: 8 },
+  icon: {
+    width: 88,
+    height: 88,
+    borderRadius: 22,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    overflow: "hidden",
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 5, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 5,
+  },
+  iconImage: { width: "100%", height: "100%" },
+  wordmark: { fontWeight: "800", fontSize: 34, color: theme.color.ink, letterSpacing: -1, marginTop: 14, fontFamily: fonts.display700 },
+  tagline: { fontWeight: "600", fontSize: 15, color: theme.color.violet, fontFamily: fonts.display600 },
+  formBlock: { gap: 14, paddingBottom: 26 },
+  field: { gap: 6 },
+  label: {
+    fontWeight: "700",
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: "rgba(26,21,35,0.6)",
+    fontFamily: fonts.mono700,
+  },
+  input: {
+    fontSize: 15,
+    color: theme.color.ink,
+    backgroundColor: "#fff",
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: 11,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    fontFamily: fonts.display600,
+  },
   passwordWrap: { position: "relative" },
   passwordInput: { paddingRight: 44 },
   eyeBtn: { position: "absolute", right: 12, top: 0, bottom: 0, justifyContent: "center" },
-  primary: { backgroundColor: theme.color.violet, borderWidth: theme.border, borderColor: theme.color.ink,
-    borderRadius: 10, padding: 14, alignItems: "center" },
-  google: { backgroundColor: theme.color.yellow, borderWidth: theme.border, borderColor: theme.color.ink,
-    borderRadius: 10, padding: 14, alignItems: "center" },
-  primaryText: { fontWeight: "800", fontSize: 16, color: theme.color.ink },
-  ghost: { padding: 10, alignItems: "center" },
-  ghostText: { fontWeight: "700", color: theme.color.ink },
+  signInBtn: {
+    marginTop: 4,
+    height: 54,
+    backgroundColor: theme.color.violet,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 5, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 5,
+  },
+  signInText: { fontWeight: "700", fontSize: 17, color: "#fff", fontFamily: fonts.display700 },
+  createBtn: {
+    height: 52,
+    backgroundColor: "#fff",
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 5, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 5,
+  },
+  createText: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display700 },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginVertical: 2 },
+  dividerLine: { flex: 1, height: 2, backgroundColor: "rgba(26,21,35,0.15)" },
+  dividerText: { fontWeight: "600", fontSize: 12, color: "rgba(26,21,35,0.45)", fontFamily: fonts.display600 },
+  googleBtn: {
+    height: 48,
+    backgroundColor: "transparent",
+    borderWidth: 2,
+    borderColor: "rgba(26,21,35,0.3)",
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  googleText: { fontWeight: "600", fontSize: 14, color: "rgba(26,21,35,0.75)", fontFamily: fonts.display600 },
+  googleG: { fontWeight: "800", color: theme.color.violet },
 });

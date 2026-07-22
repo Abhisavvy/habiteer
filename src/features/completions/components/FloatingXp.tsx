@@ -3,15 +3,17 @@ import { Animated, Text, StyleSheet } from "react-native";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 
-type Float = { id: string; amount: number };
+type Anchor = { x: number; y: number };
+type Float = { id: string; amount: number; anchor: Anchor };
 
-/** Manages a list of transient "+N XP" floats, matching the old prototype's spawnFloat. */
+/** Manages a list of transient "+N XP" floats, card-anchored to wherever the
+ * habit/task was actually tapped rather than a fixed header position. */
 export function useFloatingXp() {
   const [floats, setFloats] = useState<Float[]>([]);
-  const spawn = (amount: number) => {
+  const spawn = (amount: number, anchor: Anchor) => {
     if (amount <= 0) return;
     const id = Math.random().toString(36).slice(2);
-    setFloats((f) => [...f, { id, amount }]);
+    setFloats((f) => [...f, { id, amount, anchor }]);
   };
   const remove = (id: string) => setFloats((f) => f.filter((x) => x.id !== id));
   return { floats, spawn, remove };
@@ -21,13 +23,13 @@ export function FloatingXpOverlay({ floats, onDone }: { floats: Float[]; onDone:
   return (
     <>
       {floats.map((f) => (
-        <FloatingXpItem key={f.id} amount={f.amount} onDone={() => onDone(f.id)} />
+        <FloatingXpItem key={f.id} amount={f.amount} anchor={f.anchor} onDone={() => onDone(f.id)} />
       ))}
     </>
   );
 }
 
-function FloatingXpItem({ amount, onDone }: { amount: number; onDone: () => void }) {
+function FloatingXpItem({ amount, anchor, onDone }: { amount: number; anchor: Anchor; onDone: () => void }) {
   const translateY = useRef(new Animated.Value(6)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.8)).current;
@@ -48,7 +50,10 @@ function FloatingXpItem({ amount, onDone }: { amount: number; onDone: () => void
 
   return (
     <Animated.Text
-      style={[styles.text, { opacity, transform: [{ translateY }, { scale }] }]}
+      style={[
+        styles.text,
+        { left: anchor.x - 30, top: anchor.y - 50, opacity, transform: [{ translateY }, { scale }] },
+      ]}
       pointerEvents="none"
     >
       +{amount} XP
@@ -59,8 +64,6 @@ function FloatingXpItem({ amount, onDone }: { amount: number; onDone: () => void
 const styles = StyleSheet.create({
   text: {
     position: "absolute",
-    right: 16,
-    top: 60,
     fontWeight: "800",
     fontSize: 15,
     color: theme.color.ink,

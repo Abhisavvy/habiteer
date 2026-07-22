@@ -176,21 +176,23 @@ Conventions: PascalCase components, camelCase vars, JSDoc on exports, `PROGRESS.
 
 ## 13. Build phases
 
-**v1 — prove the loop, cross-device, free on Android**
-1. **Scaffold + auth** — Expo app, Supabase project, email/password + Google sign-in, session persists across devices. *Exit: log in on two devices, same account.*
-2. **Schema + gamification lib** — Drizzle schema, migrations, RLS; TS lib with **Vitest tests first**.
-3. **Trackables** — habits (daily + weekdays) & tasks; daily view; add/edit/archive.
-4. **Completion economy** — RPC complete/undo (atomic, idempotent), XP + coins + combo, level bar + freeze tokens, coin balance/ledger.
-5. **Personal rewards + basic leaderboard** — redeem flow (closes the dinner loop solo); global weekly board.
+**v1 — prove the loop, cross-device, free on Android — done**
+1. **Scaffold + auth** *(done)* — Expo app, Supabase project, email/password + Google sign-in, session persists across devices. *Exit: log in on two devices, same account.*
+2. **Schema + gamification lib** *(done)* — Drizzle schema, migrations, RLS; TS lib with **Vitest tests first**.
+3. **Trackables** *(done)* — habits (daily + weekdays) & tasks; daily view; add/edit/archive.
+4. **Completion economy** *(done)* — RPC complete/undo (atomic, idempotent), XP + coins + combo, level bar + freeze tokens, coin balance/ledger.
+5. **Personal rewards + basic leaderboard** *(done)* — redeem flow (closes the dinner loop solo); global weekly board.
 
 **v2 — in priority order**
-6. **Android home-screen widget** *(your top priority — first after the loop works)*
-7. **Shared rewards + groups + invite codes**
-8. **Week/month quota recurrence** (3×/week, monthly)
-9. **Gamified stats page**
-10. **League tiers** (promotion/relegation)
-11. **Cosmetics catalog + capability unlocks**
-12. **Reduction mode** (optional — coins toward abstaining instead of indulging)
+6. **Android home-screen widget** *(done — light variant only; dark variant is the one open item, see below)*
+7. **Shared rewards + groups + invite codes** *(done)*
+8. **Week/month quota recurrence** (3×/week, monthly) *(done)*
+9. **Gamified stats page** *(not started — largely superseded by the Profile screen below, which already covers Total XP/longest streak/habits done/coins; reassess what's actually left here — e.g. per-habit history, missed-period tracking — before treating this as a separate phase)*
+10. **League tiers** (promotion/relegation) *(not started)*
+11. **Cosmetics catalog + capability unlocks** *(not started)*
+12. **Reduction mode** (optional — coins toward abstaining instead of indulging) *(not started)*
+
+**Ad hoc, inserted after item 8 — v2 UX/UI redesign** (a full visual restyle + a few new screens/systems, commissioned separately mid-v2 and not part of the numbered list above): app icon/fonts/splash, Today + add/edit panel restyle, a 5-tab bottom HUD with a raised context-aware "+" button, a new **Profile** screen (the piece that overlaps with item 9 above), a shared modal system, Rewards celebration + Leaderboard ("Board") redesign, overlay polish + widget dark mode, and a follow-up restyle of Groups/shared-rewards (the one screen set the design predated entirely). **All 5 phases (A–E) done, code-complete, plus the Groups follow-up — nothing left to build.** Full detail and exact-spec provenance in the plan file `toasty-wibbling-treasure.md`; rollup in `PROGRESS.md`. **Device verification is the one thing still outstanding** — the phone has been offline for this whole stretch; deferred until it reconnects, and nothing from this pass is committed yet.
 
 Plan Mode note: any phase touching >3 files gets its own short pre-flight check-in; `PROGRESS.md` tracks completed/pending/blockers throughout.
 

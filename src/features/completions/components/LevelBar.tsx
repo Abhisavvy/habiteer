@@ -1,5 +1,4 @@
 import { View, Text, StyleSheet } from "react-native";
-import { Zap } from "lucide-react-native";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 
@@ -7,43 +6,32 @@ export function LevelBar({ level, intoLevel, need }: { level: number; intoLevel:
   const pct = Math.min(100, need > 0 ? (intoLevel / need) * 100 : 100);
   return (
     <View style={styles.wrap}>
-      <View style={styles.chip}>
-        <Zap size={14} strokeWidth={3} color={theme.color.yellow} />
-        <Text style={styles.chipText}>LVL {level}</Text>
-      </View>
-      <View style={styles.trackWrap}>
-        <View style={styles.track}>
-          <View style={[styles.fill, { width: `${pct}%` }]} />
-        </View>
-        <Text style={styles.label}>
-          {intoLevel} / {need} XP to level {level + 1}
+      <View style={styles.row}>
+        <Text style={styles.level}>LVL {level}</Text>
+        <Text style={styles.xp}>
+          {intoLevel.toLocaleString()} / {need.toLocaleString()} XP
         </Text>
+      </View>
+      <View style={styles.track}>
+        <View style={[styles.fill, { width: `${pct}%` }, pct >= 100 && styles.fillFull]} />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexDirection: "row", alignItems: "center", gap: 10 },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: theme.color.ink,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  chipText: { color: theme.color.yellow, fontWeight: "800", fontSize: 12, fontFamily: fonts.mono700 },
-  trackWrap: { flex: 1 },
+  wrap: { gap: 6 },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
+  level: { fontWeight: "700", fontSize: 13, color: theme.color.violet, fontFamily: fonts.mono700 },
+  xp: { fontWeight: "400", fontSize: 11, color: "rgba(26,21,35,0.55)", fontFamily: fonts.mono700 },
   track: {
-    height: 14,
+    height: 16,
     backgroundColor: "#fff",
-    borderWidth: 2,
+    borderWidth: theme.border,
     borderColor: theme.color.ink,
-    borderRadius: 8,
+    borderRadius: 999,
     overflow: "hidden",
   },
-  fill: { height: "100%", backgroundColor: theme.color.violet },
-  label: { fontSize: 10, fontWeight: "700", color: theme.color.ink, marginTop: 3 },
+  fill: { height: "100%", backgroundColor: theme.color.violet, borderRightWidth: 3, borderRightColor: theme.color.ink },
+  fillFull: { borderRightWidth: 0 },
 });

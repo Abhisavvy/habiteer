@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { currentStreak, periodProgress } from "../streak";
+import { currentStreak, periodProgress, longestStreakEver } from "../streak";
 
 describe("currentStreak (daily)", () => {
   it("counts consecutive completed days", () => {
@@ -80,5 +80,51 @@ describe("currentStreak (period month, quota 1)", () => {
   it("accumulates across consecutive satisfied months", () => {
     const completed = ["2026-05-10", "2026-06-10", "2026-07-10"];
     expect(currentStreak(completed, { period: "month", quota: 1 }, "2026-07-22")).toBe(3);
+  });
+});
+
+describe("longestStreakEver (daily)", () => {
+  it("is zero with no completions", () => {
+    expect(longestStreakEver([], {}, "2026-07-22")).toBe(0);
+  });
+
+  it("finds a past run longer than the current one", () => {
+    // 5-day run 07-01..07-05, then a gap, then today's un-graced 2-day run.
+    const completed = ["2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05", "2026-07-09", "2026-07-10"];
+    expect(longestStreakEver(completed, {}, "2026-07-10")).toBe(5);
+  });
+
+  it("extends the best run through today when today is done", () => {
+    const completed = ["2026-07-08", "2026-07-09", "2026-07-10"];
+    expect(longestStreakEver(completed, {}, "2026-07-10")).toBe(3);
+  });
+
+  it("grace: an unfinished today doesn't cap the streak that reaches it", () => {
+    const completed = ["2026-07-08", "2026-07-09"];
+    expect(longestStreakEver(completed, {}, "2026-07-10")).toBe(2);
+  });
+
+  it("skips unscheduled weekdays without breaking a scheduled run", () => {
+    // Mon/Wed/Fri only: 01-05 Mon, 01-07 Wed, 01-09 Fri — all done, all scheduled.
+    expect(longestStreakEver(["2026-01-05", "2026-01-07", "2026-01-09"], { weekdays: [1, 3, 5] }, "2026-01-09")).toBe(3);
+  });
+});
+
+describe("longestStreakEver (period week, quota 3)", () => {
+  it("finds the longest run of satisfied weeks, not just the trailing one", () => {
+    // week1 (06-29..07-05) and week2 (07-06..07-12) each satisfied (3+), a gap week, then today's week under quota.
+    const completed = [
+      "2026-06-29", "2026-06-30", "2026-07-01",
+      "2026-07-06", "2026-07-07", "2026-07-08",
+      "2026-07-20",
+    ];
+    expect(longestStreakEver(completed, { period: "week", quota: 3 }, "2026-07-22")).toBe(2);
+  });
+});
+
+describe("longestStreakEver (period month, quota 1)", () => {
+  it("finds the longest run across months even if the current month breaks it", () => {
+    const completed = ["2026-05-10", "2026-06-10"];
+    expect(longestStreakEver(completed, { period: "month", quota: 1 }, "2026-07-22")).toBe(2);
   });
 });

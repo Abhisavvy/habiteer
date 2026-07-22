@@ -1,4 +1,4 @@
-import { prevDay, weekday, weekStart, monthStart, prevPeriodStart, type ISODate } from "./dates";
+import { prevDay, nextDay, weekday, weekStart, monthStart, prevPeriodStart, nextPeriodStart, type ISODate } from "./dates";
 
 const MAX_LOOKBACK = 4000; // ~11 years; safety bound
 const MAX_LOOKBACK_PERIODS = 600; // ~11+ years of weeks; same intent as MAX_LOOKBACK, period-scaled
@@ -83,6 +83,73 @@ function currentStreakForPeriod(
     cursor = prevPeriodStart(cursor, period);
   }
   return streak;
+}
+
+/**
+ * Longest streak ever achieved (all-time max), by the same rules as
+ * `currentStreak` — but scanning forward from the earliest completion
+ * instead of backward from today, so a past run isn't shadowed by a
+ * shorter one still in progress. Profile's "Longest streak" stat.
+ */
+export function longestStreakEver(
+  completed: ISODate[],
+  opts: { weekdays?: number[]; period?: Period; quota?: number },
+  today: ISODate
+): number {
+  if (completed.length === 0) return 0;
+  const period = opts.period ?? "day";
+  if (period !== "day") {
+    return longestStreakEverForPeriod(completed, period, opts.quota ?? 1, today);
+  }
+
+  const done = new Set(completed);
+  const scheduledDays = opts.weekdays && opts.weekdays.length > 0 ? opts.weekdays : null;
+  let cursor = completed.reduce((min, d) => (d < min ? d : min), completed[0]);
+  let best = 0;
+  let running = 0;
+
+  for (let i = 0; i <= MAX_LOOKBACK && cursor <= today; i++) {
+    const isScheduled = scheduledDays === null || scheduledDays.includes(weekday(cursor));
+    if (isScheduled) {
+      if (done.has(cursor)) {
+        running += 1;
+        if (running > best) best = running;
+      } else if (cursor !== today) {
+        running = 0; // a past scheduled day was missed
+      }
+      // if it's today and not done: grace, running carries over unresolved
+    }
+    cursor = nextDay(cursor);
+  }
+  return best;
+}
+
+function longestStreakEverForPeriod(
+  completed: ISODate[],
+  period: "week" | "month",
+  quota: number,
+  today: ISODate
+): number {
+  const countInPeriod = (periodStart: ISODate) =>
+    completed.filter((d) => periodStartOf(period, d) === periodStart).length;
+
+  const earliest = completed.reduce((min, d) => (d < min ? d : min), completed[0]);
+  const todayStart = periodStartOf(period, today);
+  let cursor = periodStartOf(period, earliest);
+  let best = 0;
+  let running = 0;
+
+  for (let i = 0; i <= MAX_LOOKBACK_PERIODS && cursor <= todayStart; i++) {
+    if (countInPeriod(cursor) >= quota) {
+      running += 1;
+      if (running > best) best = running;
+    } else if (cursor !== todayStart) {
+      running = 0; // a fully elapsed period under quota breaks the streak
+    }
+    // if cursor is the current period and under quota: grace, not yet elapsed
+    cursor = nextPeriodStart(cursor, period);
+  }
+  return best;
 }
 
 /** Completions so far in the current period (for display, e.g. "2/3 this week"). Week/month only. */

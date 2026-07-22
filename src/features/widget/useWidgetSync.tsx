@@ -23,7 +23,10 @@ export function useWidgetSync() {
 
     requestWidgetUpdate({
       widgetName: WIDGET_NAME,
-      renderWidget: (info) => <HabitWidget snapshot={capSnapshotRows(snapshot, rowsForHeight(info.height))} />,
+      renderWidget: (info) => {
+        const visible = capSnapshotRows(snapshot, rowsForHeight(info.height));
+        return { light: <HabitWidget snapshot={visible} />, dark: <HabitWidget snapshot={visible} dark /> };
+      },
     });
   }, [trackables, completions, coinBalance]);
 }

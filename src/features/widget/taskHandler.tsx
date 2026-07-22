@@ -22,7 +22,7 @@ export const widgetTaskHandler = async (props: WidgetTaskHandlerProps) => {
     case "WIDGET_RESIZED": {
       const stored = (await loadSnapshot()) ?? EMPTY_SNAPSHOT;
       const visible = capSnapshotRows(stored, rowsForHeight(props.widgetInfo.height));
-      props.renderWidget(<HabitWidget snapshot={visible} />);
+      props.renderWidget({ light: <HabitWidget snapshot={visible} />, dark: <HabitWidget snapshot={visible} dark /> });
       break;
     }
 
@@ -39,7 +39,8 @@ export const widgetTaskHandler = async (props: WidgetTaskHandlerProps) => {
         items: stored.items.map((item) => (item.id === id ? { ...item, isDone: true } : item)),
       };
       await saveSnapshot(optimistic);
-      props.renderWidget(<HabitWidget snapshot={capSnapshotRows(optimistic, rowsForHeight(props.widgetInfo.height))} />);
+      const visible = capSnapshotRows(optimistic, rowsForHeight(props.widgetInfo.height));
+      props.renderWidget({ light: <HabitWidget snapshot={visible} />, dark: <HabitWidget snapshot={visible} dark /> });
 
       // Best-effort sync (confirmed with user): leave the optimistic state on
       // failure rather than a full retry queue — reconciles next time the
