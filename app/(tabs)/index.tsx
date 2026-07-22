@@ -126,6 +126,7 @@ export default function Home() {
         {panel?.mode === "add" && (
           <TrackablePanel
             mode="add"
+            level={progress.level}
             submitting={createMutation.isPending}
             onCancel={() => setPanel(null)}
             onSubmit={(values) => {
@@ -140,6 +141,7 @@ export default function Home() {
           <TrackablePanel
             mode="edit"
             initial={panel.trackable}
+            level={progress.level}
             submitting={updateMutation.isPending}
             onCancel={() => setPanel(null)}
             onSubmit={(values) => {

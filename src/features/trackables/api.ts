@@ -8,7 +8,7 @@ export type Trackable = {
   emoji: string;
   difficulty: "easy" | "medium" | "hard";
   coinValue: number;
-  period: "day" | null;
+  period: "day" | "week" | "month" | null;
   quota: number;
   weekdays: number[] | null;
   archivedAt: string | null;
@@ -56,8 +56,8 @@ export async function createTrackable(values: TrackableFormValues): Promise<Trac
       emoji: parsed.emoji,
       difficulty: parsed.difficulty,
       coin_value: parsed.coinValue,
-      period: parsed.kind === "habit" ? "day" : null,
-      quota: 1,
+      period: parsed.period,
+      quota: parsed.quota,
       weekdays: parsed.weekdays,
     })
     .select()
@@ -74,6 +74,8 @@ export async function updateTrackable(id: string, values: TrackableUpdateValues)
   if (parsed.difficulty !== undefined) patch.difficulty = parsed.difficulty;
   if (parsed.coinValue !== undefined) patch.coin_value = parsed.coinValue;
   if (parsed.weekdays !== undefined) patch.weekdays = parsed.weekdays;
+  if (parsed.period !== undefined) patch.period = parsed.period;
+  if (parsed.quota !== undefined) patch.quota = parsed.quota;
 
   const { data, error } = await supabase.from("trackables").update(patch).eq("id", id).select().single();
   if (error) throw error;

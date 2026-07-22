@@ -1,4 +1,4 @@
-# Server-authoritative mutations (Phase 2, Phase 4 freeze tokens, v2 groups — done)
+# Server-authoritative mutations (Phase 2, Phase 4 freeze tokens, v2 groups + recurrence — done)
 
 Implemented as Postgres functions called via `supabase.rpc()` so XP/coin/streak/
 ledger updates are atomic and tamper-proof. Tuning constants (difficulty base,
@@ -23,16 +23,27 @@ by lying about the date.
 
 `{ xp: int, coins: int, streak_after: int, freeze_tokens: int, level: { level, into_level, need } }`
 
-- **habit**: streak = consecutive satisfied scheduled days ending today
-  (mirrors `streak.ts`'s `currentStreak`, skipping unscheduled weekdays
-  without breaking); `xp = round(difficulty_base * combo_multiplier(streak))`;
-  `coins = coin_value` (flat, the habit's own editable field). The streak walk
-  never looks further back than the trackable's own `created_at` — a day
-  before it existed isn't a missed day, there was nothing to do.
+- **habit**: streak = consecutive satisfied periods ending today (mirrors
+  `streak.ts`'s `currentStreak`). Two walks, branched on `period`:
+  - `period = 'day'` (v1, unchanged): consecutive satisfied scheduled days,
+    skipping unscheduled weekdays without breaking.
+  - `period in ('week', 'month')` (v2 — PLAN.md §7): a period counts once its
+    completions-so-far reach `quota`, including the current still-open one
+    (so `period='day', quota=1` reduces to exactly the v1 behavior). Week =
+    Monday-Sunday, month = calendar month, both via `date_trunc(...)`,
+    matching `dates.ts`'s `weekStart`/`monthStart` conventions exactly. See
+    `periodProgress()` in `streak.ts` for the current period's own
+    completed/quota count (not returned by this RPC — computed client-side
+    from the completions the client already has).
+  - Either way: `xp = round(difficulty_base * combo_multiplier(streak))`,
+    `coins = coin_value` (flat, the habit's own editable field). Neither walk
+    looks further back than the trackable's own `created_at` — a day/period
+    before it existed isn't a missed one, there was nothing to do.
 - **task**: `coins = task_coins(difficulty)` (always derived fresh from
   difficulty — the fixed 8/15/26 — never from the row's own `coin_value`);
   `xp = 0`; the task is archived (`archived_at = now()`) in the same call.
-- **Freeze tokens** (see below): a missed scheduled day is bridged instead of
+- **Freeze tokens** (see below): a missed scheduled day (or, for week/month
+  habits, one under-quota fully-elapsed prior period) is bridged instead of
   breaking the streak if a token is available; only habits can grant a token
   (crossing a level boundary — tasks always earn 0 XP).
 - **Idempotent**: replaying a same-day completion (same `trackable_id` +
@@ -77,6 +88,27 @@ Tuning: `FREEZE_TOKEN_LEVEL_INTERVAL = 5`, `FREEZE_TOKEN_MAX_BALANCE = 3`
   other completions may have touched the same balance since. `freeze_tokens`
   itself is a single mutable balance (`user_id primary key, balance int`),
   not a ledger — that's the shape PLAN.md's data model specifies.
+
+## Week/month quota recurrence (v2)
+
+`period_end(p_start date, p_period text)`/`prev_period_start(...)` are small
+SQL helpers mirroring `dates.ts`'s `weekStart`/`monthStart`/
+`prevPeriodStart` — used by `fn_complete_trackable`'s period-walk branch
+above to compute `[period_start, period_end)` ranges and step backward.
+
+- **Level-5 gate** (PLAN.md §9 — "Lv 5 ... advanced recurrence"): enforced
+  in `rls.sql`'s `"own trackables"` policy via `WITH CHECK`, reusing the
+  `caller_level()` helper added in Phase 2 for the group-creation gate.
+  Editing an existing day-period habit is unaffected — the check only
+  triggers when `period` is being set to `'week'`/`'month'`.
+- `quota` (already existed in `schema.ts` since Phase 1 but was unused —
+  always hardcoded to `1` client-side) is now wired through end-to-end. For
+  `period = 'day'`, quota is always effectively 1 (every completion
+  satisfies its own day); the column stays `1` there and is only
+  meaningfully >1 for week/month habits.
+- No new tuning-constant codegen for the level-5 literal — same reasoning
+  as the level-3 group gate: one hardcoded, cross-referenced literal isn't
+  worth a generator.
 
 ## `fn_redeem_reward(p_id uuid) returns jsonb`
 

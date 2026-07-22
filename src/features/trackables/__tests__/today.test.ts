@@ -38,4 +38,10 @@ describe("filterDueToday", () => {
     const task = trackable({ id: "task", kind: "task", weekdays: null, period: null });
     expect(filterDueToday([task], "2026-01-06")).toContainEqual(task);
   });
+
+  it("always includes week/month-quota habits regardless of weekday", () => {
+    const weekly = trackable({ id: "weekly", period: "week", quota: 3, weekdays: null });
+    const monthly = trackable({ id: "monthly", period: "month", quota: 1, weekdays: null });
+    expect(filterDueToday([weekly, monthly], "2026-01-06")).toEqual([weekly, monthly]);
+  });
 });

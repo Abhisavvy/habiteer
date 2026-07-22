@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from "vitest";
 import { comboMultiplier } from "@/features/gamification/combo";
 import { taskCoins } from "@/features/gamification/coins";
+import { weekStart, monthStart, prevPeriodStart, prevDay } from "@/features/gamification/dates";
 import {
   testClient,
   signInTestUser,
@@ -555,5 +556,168 @@ describe("fn_contribute_to_reward", () => {
       await cleanupSharedReward(reward.id);
       await cleanupGroup(group.id);
     }
+  });
+});
+
+/** Days strictly before today within today's own Mon-Sun week — could be empty if today is Monday. */
+function priorDaysInCurrentWeek(): string[] {
+  const start = weekStart(todayUTC());
+  const days: string[] = [];
+  let d = todayUTC();
+  for (;;) {
+    d = prevDay(d);
+    if (d < start) break;
+    days.push(d);
+  }
+  return days;
+}
+
+function addDays(date: string, n: number): string {
+  const d = new Date(date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+describe("fn_complete_trackable — period week/month recurrence", () => {
+  let fundingId: string;
+  beforeAll(async () => {
+    const { trackableId } = await seedXp(2000); // comfortably level 5+, required to create period week/month
+    fundingId = trackableId;
+  });
+  afterAll(async () => {
+    await cleanupTrackable(fundingId);
+  });
+
+  it("reaches quota on the completion that crosses it this week, extending the streak", async () => {
+    const priorDays = priorDaysInCurrentWeek().slice(0, 2);
+    const quota = priorDays.length + 1;
+    const t = await makeTrackable({ kind: "habit", period: "week", quota, difficulty: "easy" });
+    try {
+      for (const d of priorDays) await seedHistoricalCompletion(t.id, d, 0, 0, 0);
+      const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(error).toBeNull();
+      expect(data.streak_after).toBe(1);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("a completion beyond quota in the same week doesn't inflate the streak", async () => {
+    const priorDays = priorDaysInCurrentWeek();
+    if (priorDays.length === 0) return; // Monday: nothing to pre-satisfy quota with before today
+    const quota = priorDays.length; // already met by seeded history alone, before today's completion
+    const t = await makeTrackable({ kind: "habit", period: "week", quota, difficulty: "easy" });
+    try {
+      for (const d of priorDays) await seedHistoricalCompletion(t.id, d, 0, 0, 0);
+      const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(error).toBeNull();
+      expect(data.streak_after).toBe(1); // not 2 — the extra completion doesn't add another period
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("a satisfied prior week extends the streak even though the current week hasn't met quota yet", async () => {
+    const lastWeekStart = prevPeriodStart(weekStart(todayUTC()), "week");
+    const t = await makeTrackable({
+      kind: "habit",
+      period: "week",
+      quota: 2,
+      difficulty: "easy",
+      createdAt: prevPeriodStart(lastWeekStart, "week"),
+    });
+    try {
+      await seedHistoricalCompletion(t.id, lastWeekStart, 0, 0, 0);
+      await seedHistoricalCompletion(t.id, addDays(lastWeekStart, 1), 0, 0, 0);
+      const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(error).toBeNull();
+      // This week has only today's completion (< quota 2), so it doesn't count yet —
+      // but last week's satisfied pair still extends the streak to 1.
+      expect(data.streak_after).toBe(1);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("a fully elapsed under-quota week breaks the streak, regardless of older history", async () => {
+    const lastWeekStart = prevPeriodStart(weekStart(todayUTC()), "week");
+    const twoWeeksAgoStart = prevPeriodStart(lastWeekStart, "week");
+    const t = await makeTrackable({
+      kind: "habit",
+      period: "week",
+      quota: 3,
+      difficulty: "easy",
+      createdAt: prevPeriodStart(twoWeeksAgoStart, "week"),
+    });
+    try {
+      await seedHistoricalCompletion(t.id, lastWeekStart, 0, 0, 0); // only 1 completion last week, under quota 3
+      // 3 completions two weeks ago — would satisfy quota if reachable, proving it isn't once a nearer week breaks.
+      await seedHistoricalCompletion(t.id, twoWeeksAgoStart, 0, 0, 0);
+      await seedHistoricalCompletion(t.id, addDays(twoWeeksAgoStart, 1), 0, 0, 0);
+      await seedHistoricalCompletion(t.id, addDays(twoWeeksAgoStart, 2), 0, 0, 0);
+      const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(error).toBeNull();
+      expect(data.streak_after).toBe(0);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("bridges one under-quota prior week with a freeze token", async () => {
+    const lastWeekStart = prevPeriodStart(weekStart(todayUTC()), "week");
+    const t = await makeTrackable({
+      kind: "habit",
+      period: "week",
+      quota: 3,
+      difficulty: "easy",
+      createdAt: prevPeriodStart(lastWeekStart, "week"),
+    });
+    await setFreezeBalance(1);
+    try {
+      await seedHistoricalCompletion(t.id, lastWeekStart, 0, 0, 0); // 1 completion last week, under quota 3
+      const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(error).toBeNull();
+      expect(data.streak_after).toBe(1); // bridged
+      expect(await getFreezeBalance()).toBe(0);
+    } finally {
+      await cleanupTrackable(t.id);
+      await setFreezeBalance(0);
+    }
+  });
+
+  it("supports monthly quota habits, including cross-month streak accumulation", async () => {
+    const lastMonthStart = prevPeriodStart(monthStart(todayUTC()), "month");
+    const t = await makeTrackable({
+      kind: "habit",
+      period: "month",
+      quota: 1,
+      difficulty: "easy",
+      createdAt: prevPeriodStart(lastMonthStart, "month"),
+    });
+    try {
+      await seedHistoricalCompletion(t.id, lastMonthStart, 0, 0, 0);
+      const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(error).toBeNull();
+      expect(data.streak_after).toBe(2); // last month (satisfied) + this month (satisfied by today's own completion)
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+});
+
+describe("trackables — level 5 gate for week/month recurrence", () => {
+  it("rejects creating a period='week' trackable below level 5", async () => {
+    const { data: userData } = await testClient.auth.getUser();
+    const { error } = await testClient.from("trackables").insert({
+      user_id: userData.user!.id,
+      kind: "habit",
+      name: "[TEST] gate-check",
+      emoji: "🧪",
+      difficulty: "easy",
+      coin_value: 10,
+      period: "week",
+      quota: 3,
+    });
+    expect(error).not.toBeNull();
   });
 });

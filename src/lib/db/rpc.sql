@@ -23,6 +23,34 @@ alter table coin_ledger add constraint coin_ledger_kind_check
 
 create index if not exists completions_user_date_idx on completions (user_id, completed_on);
 
+-- v2 Phase 3: week/month quota recurrence (PLAN.md §7). Mirror of
+-- src/features/gamification/dates.ts's weekStart/monthStart/prevPeriodStart —
+-- date_trunc('week', ...) is Postgres's own Monday-start ISO week, matching
+-- the TS lib's convention exactly.
+create or replace function public.period_end(p_start date, p_period text)
+returns date
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_period
+    when 'week' then p_start + 7
+    when 'month' then (p_start + interval '1 month')::date
+  end;
+$$;
+
+create or replace function public.prev_period_start(p_start date, p_period text)
+returns date
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_period
+    when 'week' then p_start - 7
+    when 'month' then (p_start - interval '1 month')::date
+  end;
+$$;
+
 create or replace function public.fn_complete_trackable(p_id uuid)
 returns jsonb
 language plpgsql
@@ -37,6 +65,8 @@ declare
   v_streak      int;
   v_is_scheduled boolean;
   v_is_done     boolean;
+  v_period_start date;
+  v_count_in_period int;
   v_xp          int;
   v_coins       int;
   v_freeze_balance  int;
@@ -81,25 +111,38 @@ begin
   if v_trackable.kind = 'habit' then
     select balance into v_freeze_balance from freeze_tokens where user_id = auth.uid();
 
-    -- Streak walk mirrors src/features/gamification/streak.ts's currentStreak,
-    -- extended with freeze-token bridging: today counts as done without a
-    -- prior insert (the TS lib's "grace" branch never applies here), and a
-    -- missed scheduled day is bridged — streak continues uninterrupted,
-    -- one token spent — if a token is still available.
-    v_cursor := current_app_date();
-    v_streak := 0;
-    for i in 0 .. 3999 loop -- mirrors streak.ts's MAX_LOOKBACK
-      -- A day before the trackable existed isn't a missed day — there was
-      -- nothing to do. Stop (don't break-vs-bridge a day that was never real).
-      exit when v_cursor < v_trackable.created_at::date;
-      v_is_scheduled := v_trackable.weekdays is null
-                         or array_length(v_trackable.weekdays, 1) is null
-                         or extract(dow from v_cursor)::int = any(v_trackable.weekdays);
-      if v_is_scheduled then
-        v_is_done := (v_cursor = current_app_date())
-                      or exists(select 1 from completions
-                                where trackable_id = p_id and completed_on = v_cursor);
-        if v_is_done then
+    if v_trackable.period = 'week' or v_trackable.period = 'month' then
+      -- Period-granular walk mirroring streak.ts's currentStreakForPeriod:
+      -- a period counts once its completions-so-far reach quota, including
+      -- the current still-open one. Freeze-bridges one under-quota PRIOR
+      -- (fully elapsed) period, same mechanic as the day-walk below.
+      v_period_start := case v_trackable.period
+        when 'week' then date_trunc('week', current_app_date())::date
+        else date_trunc('month', current_app_date())::date
+      end;
+      v_streak := 0;
+
+      -- +1 for the completion about to be inserted below (not in the table yet).
+      v_count_in_period := 1 + (
+        select count(*) from completions
+        where trackable_id = p_id
+          and completed_on >= v_period_start
+          and completed_on < period_end(v_period_start, v_trackable.period)
+      );
+      if v_count_in_period >= v_trackable.quota then
+        v_streak := v_streak + 1;
+      end if;
+      v_period_start := prev_period_start(v_period_start, v_trackable.period);
+
+      for i in 0 .. 599 loop -- mirrors streak.ts's MAX_LOOKBACK_PERIODS
+        exit when v_period_start < v_trackable.created_at::date;
+        v_count_in_period := (
+          select count(*) from completions
+          where trackable_id = p_id
+            and completed_on >= v_period_start
+            and completed_on < period_end(v_period_start, v_trackable.period)
+        );
+        if v_count_in_period >= v_trackable.quota then
           v_streak := v_streak + 1;
         elsif v_freeze_balance - v_freeze_spent > 0 then
           v_freeze_spent := v_freeze_spent + 1;
@@ -107,9 +150,39 @@ begin
         else
           exit;
         end if;
-      end if;
-      v_cursor := v_cursor - 1;
-    end loop;
+        v_period_start := prev_period_start(v_period_start, v_trackable.period);
+      end loop;
+    else
+      -- Streak walk mirrors src/features/gamification/streak.ts's currentStreak,
+      -- extended with freeze-token bridging: today counts as done without a
+      -- prior insert (the TS lib's "grace" branch never applies here), and a
+      -- missed scheduled day is bridged — streak continues uninterrupted,
+      -- one token spent — if a token is still available.
+      v_cursor := current_app_date();
+      v_streak := 0;
+      for i in 0 .. 3999 loop -- mirrors streak.ts's MAX_LOOKBACK
+        -- A day before the trackable existed isn't a missed day — there was
+        -- nothing to do. Stop (don't break-vs-bridge a day that was never real).
+        exit when v_cursor < v_trackable.created_at::date;
+        v_is_scheduled := v_trackable.weekdays is null
+                           or array_length(v_trackable.weekdays, 1) is null
+                           or extract(dow from v_cursor)::int = any(v_trackable.weekdays);
+        if v_is_scheduled then
+          v_is_done := (v_cursor = current_app_date())
+                        or exists(select 1 from completions
+                                  where trackable_id = p_id and completed_on = v_cursor);
+          if v_is_done then
+            v_streak := v_streak + 1;
+          elsif v_freeze_balance - v_freeze_spent > 0 then
+            v_freeze_spent := v_freeze_spent + 1;
+            v_streak := v_streak + 1;
+          else
+            exit;
+          end if;
+        end if;
+        v_cursor := v_cursor - 1;
+      end loop;
+    end if;
 
     v_xp := round(difficulty_base(v_trackable.difficulty) * combo_multiplier(v_streak));
     v_coins := v_trackable.coin_value; -- flat, editable per habit

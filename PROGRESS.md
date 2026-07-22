@@ -336,6 +336,61 @@ Known follow-ups (not blocking)
 - No image support for shared rewards (emoji-only, same as personal
   rewards).
 
+## v2 Phase 3 — Week/month quota recurrence (done)
+Done
+- `trackables.period`/`.quota` existed since Phase 1 but were completely
+  unused (`quota` hardcoded to `1`, `period` hardcoded to `'day'`/`null`,
+  never read by `streak.ts`, `fn_complete_trackable`, `filterDueToday`, or
+  `trackableStatus`) — greenfield behind an already-reserved schema shape,
+  matching PLAN.md §7's "3×/week → period week, quota 3 (v2). Monthly →
+  period month, quota 1 (v2)... v1 ships day + weekdays; the week/month code
+  paths are stubbed behind the same model."
+- **Streak semantics, made concrete**: a period counts toward the streak
+  exactly once its completions-so-far reach quota — including the current,
+  still-open period. For `period='day'` (quota always 1) this reduces to
+  exactly the pre-existing daily behavior, bit-for-bit unchanged. Extra
+  completions beyond quota in the same period still pay XP/coins but don't
+  extend the streak further or push the progress display past quota/quota.
+  Implemented identically twice, same pattern as every prior gamification
+  feature: `src/features/gamification/streak.ts` (pure, tested first) and
+  `fn_complete_trackable`'s new period-walk branch in `rpc.sql` (existing
+  day-walk left completely untouched for `period='day'`). New pure
+  `periodProgress()` in `streak.ts` for the "2/3 this week" display, which
+  the RPC doesn't return (computed client-side from completions the app
+  already has).
+- **Level 5 gate** (confirmed with user, per PLAN.md §9's "Lv 5 ... advanced
+  recurrence"): creating or editing a habit *into* `period` week/month
+  requires level 5, enforced via `rls.sql`'s `"own trackables"` `WITH CHECK`
+  — same `caller_level()` helper added in Phase 2 for the group-creation
+  gate. Client mirrors it in `TrackablePanel` for a friendly message only.
+- Client: `dates.ts` (`weekStart`/`monthStart`/`prevPeriodStart`), `today.ts`
+  (week/month habits always due, no weekday gating), `TrackablePanel`'s
+  Schedule selector extended to 4 options (Every day / Specific days /
+  Weekly / Monthly) with a quota input and the level-5 hint,
+  `TrackableCard`/`derived.ts` show a "N/quota this wk/mo" progress badge
+  alongside the (now period-aware) streak flame.
+- 18 new tests (8 `streak.ts` + 7 `rpc.test.ts` integration + 2 `today.ts` +
+  1 `derived.ts`; 74 total, all green, run twice back-to-back); `tsc
+  --noEmit` clean. Verified live on device: seeded temporary XP on the
+  user's real account (with explicit confirmation) to reach level 5,
+  created a Weekly ×3 and a Monthly ×2 habit, confirmed the progress badge
+  updates on completion (0/3 → 1/3), confirmed the level-5 gate correctly
+  blocks/unblocks based on level; both temporary artifacts (seeded XP, test
+  habits) removed afterward per the user's choice.
+
+Bugs found + fixed this session (test-only, never shipped):
+- The period-walk's initial test cases failed because seeded historical
+  completions predated the freshly-created test trackable's own
+  `created_at` — the walk's existing "don't bridge a period that was never
+  real" guard (correctly) stopped immediately. Not a product bug: fixed by
+  backdating `created_at` in the test fixtures via the existing `createdAt`
+  override, matching how day-based streak tests already handle this.
+
+Known follow-ups (not blocking)
+- No UI affordance to see *which* days/weeks satisfied quota historically
+  (e.g. a calendar view) — only the current period's live progress and the
+  running streak count are shown.
+
 ## Now: UX/UI polish pass (design-led, separate track)
 User is redesigning app + widget visuals (including a real app icon —
 there's never been one, still Expo's default placeholder) in a separate
@@ -347,8 +402,8 @@ continues in parallel on the v2 roadmap below; visual changes land whenever
 the design pass is ready to hand off, not blocking other v2 work.
 
 ## Next
-- v2, in priority order per PLAN.md §13: week/month quota recurrence (next)
-  → gamified stats page → league tiers → cosmetics/unlocks → reduction mode.
+- v2, in priority order per PLAN.md §13: gamified stats page (next) →
+  league tiers → cosmetics/unlocks → reduction mode.
 - Sounds/haptics implementation (spec'd in the UX brief above, not yet built).
 
 ## Bugs / blockers

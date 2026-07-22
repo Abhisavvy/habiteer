@@ -21,7 +21,7 @@ type TrackableOverrides = Partial<{
   emoji: string;
   difficulty: "easy" | "medium" | "hard";
   coinValue: number;
-  period: "day" | null;
+  period: "day" | "week" | "month" | null;
   quota: number;
   weekdays: number[] | null;
   /** Backdate for tests that seed historical completions predating "now" — the

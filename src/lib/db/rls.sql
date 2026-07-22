@@ -181,3 +181,18 @@ create policy "own contribution insert" on reward_contributions for insert
       select id from rewards where group_id in (select public.my_group_ids())
     )
   );
+
+-- v2 Phase 3: week/month quota recurrence (PLAN.md §7, §9).
+
+drop policy if exists "own trackables" on trackables;
+
+-- Replaces the Phase 1 "own trackables" policy (which had no WITH CHECK at
+-- all). A plain edit to an existing day/weekday habit is untouched — period
+-- stays 'day' — so only creating or converting a habit *into* week/month
+-- recurrence needs level 5, per PLAN.md §9's "Lv 5 ... advanced recurrence".
+create policy "own trackables" on trackables for all
+  using (user_id = auth.uid())
+  with check (
+    user_id = auth.uid()
+    and (period is distinct from 'week' and period is distinct from 'month' or caller_level() >= 5)
+  );

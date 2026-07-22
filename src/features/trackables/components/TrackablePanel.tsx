@@ -15,15 +15,24 @@ const DIFF_TINT: Record<Difficulty, string> = {
 };
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// PLAN.md §9 — mirrors the "own trackables" WITH CHECK level-5 gate in
+// rls.sql. The server is authoritative; this only swaps a raw RLS error for
+// a friendly message before the request goes out.
+const RECURRENCE_LEVEL = 5;
+
+type ScheduleMode = "daily" | "specific" | "weekly" | "monthly";
+
 export function TrackablePanel({
   mode,
   initial,
+  level,
   onSubmit,
   onCancel,
   submitting,
 }: {
   mode: "add" | "edit";
   initial?: Trackable;
+  level: number;
   onSubmit: (values: TrackableFormValues) => void;
   onCancel: () => void;
   submitting?: boolean;
@@ -33,10 +42,17 @@ export function TrackablePanel({
   const [emoji, setEmoji] = useState(initial?.emoji ?? EMOJI_CHOICES[0]);
   const [difficulty, setDifficulty] = useState<Difficulty>(initial?.difficulty ?? "medium");
   const [coinValue, setCoinValue] = useState(String(initial?.coinValue ?? defaultCoinValue("medium")));
-  const [scheduleMode, setScheduleMode] = useState<"daily" | "specific">(
-    initial?.weekdays && initial.weekdays.length > 0 ? "specific" : "daily"
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(
+    initial?.period === "week"
+      ? "weekly"
+      : initial?.period === "month"
+        ? "monthly"
+        : initial?.weekdays && initial.weekdays.length > 0
+          ? "specific"
+          : "daily"
   );
   const [weekdays, setWeekdays] = useState<number[]>(initial?.weekdays ?? []);
+  const [quota, setQuota] = useState(String(initial?.quota && initial.quota > 1 ? initial.quota : 3));
 
   const selectDifficulty = (d: Difficulty) => {
     setDifficulty(d);
@@ -47,7 +63,21 @@ export function TrackablePanel({
     setWeekdays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
   };
 
-  const canSubmit = name.trim().length > 0 && (kind === "task" || scheduleMode === "daily" || weekdays.length > 0);
+  const selectScheduleMode = (next: ScheduleMode) => {
+    if (next === "weekly" && scheduleMode !== "weekly") setQuota("3");
+    if (next === "monthly" && scheduleMode !== "monthly") setQuota("1");
+    setScheduleMode(next);
+  };
+
+  const isRecurrence = scheduleMode === "weekly" || scheduleMode === "monthly";
+  const hasRecurrenceLevel = level >= RECURRENCE_LEVEL;
+
+  const canSubmit =
+    name.trim().length > 0 &&
+    (kind === "task" ||
+      scheduleMode === "daily" ||
+      (scheduleMode === "specific" && weekdays.length > 0) ||
+      (isRecurrence && Number(quota) > 0 && hasRecurrenceLevel));
 
   const submit = () => {
     if (!canSubmit) return;
@@ -58,6 +88,8 @@ export function TrackablePanel({
       difficulty,
       coinValue: Number(coinValue) || defaultCoinValue(difficulty),
       weekdays: kind === "habit" && scheduleMode === "specific" ? weekdays : null,
+      period: kind === "task" ? null : scheduleMode === "weekly" ? "week" : scheduleMode === "monthly" ? "month" : "day",
+      quota: kind === "habit" && isRecurrence ? Number(quota) || 1 : 1,
     });
   };
 
@@ -136,15 +168,15 @@ export function TrackablePanel({
 
           <View style={styles.row}>
             <Text style={styles.label}>Schedule</Text>
-            <View style={styles.buttonRow}>
-              {(["daily", "specific"] as const).map((s) => (
+            <View style={styles.scheduleRow}>
+              {(["daily", "specific", "weekly", "monthly"] as const).map((s) => (
                 <Pressable
                   key={s}
-                  style={[styles.choiceBtn, scheduleMode === s && styles.choiceBtnSelected]}
-                  onPress={() => setScheduleMode(s)}
+                  style={[styles.scheduleBtn, scheduleMode === s && styles.choiceBtnSelected]}
+                  onPress={() => selectScheduleMode(s)}
                 >
                   <Text style={[styles.choiceText, scheduleMode === s && styles.choiceTextSelected]}>
-                    {s === "daily" ? "Every day" : "Specific days"}
+                    {s === "daily" ? "Every day" : s === "specific" ? "Specific days" : s === "weekly" ? "Weekly" : "Monthly"}
                   </Text>
                 </Pressable>
               ))}
@@ -164,6 +196,18 @@ export function TrackablePanel({
                   </Text>
                 </Pressable>
               ))}
+            </View>
+          )}
+
+          {isRecurrence && (
+            <View style={styles.row}>
+              <Text style={styles.label}>{scheduleMode === "weekly" ? "Times per week" : "Times per month"}</Text>
+              <TextInput style={styles.coinInput} value={quota} onChangeText={setQuota} keyboardType="number-pad" />
+              {!hasRecurrenceLevel && (
+                <Text style={styles.hint}>
+                  Reach level {RECURRENCE_LEVEL} for weekly/monthly habits — you're level {level}.
+                </Text>
+              )}
             </View>
           )}
         </>
@@ -254,6 +298,18 @@ const styles = StyleSheet.create({
     color: theme.color.ink,
     width: 90,
   },
+  scheduleRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  scheduleBtn: {
+    minWidth: "46%",
+    flexGrow: 1,
+    borderWidth: 2,
+    borderColor: theme.color.ink,
+    borderRadius: 9,
+    paddingVertical: 9,
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  hint: { fontSize: 12, fontWeight: "600", color: theme.color.fire },
   weekdayRow: { flexDirection: "row", gap: 6 },
   weekdayBtn: {
     flex: 1,

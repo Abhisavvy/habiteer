@@ -17,6 +17,8 @@ const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function scheduleLabel(t: Trackable): string | null {
   if (t.kind !== "habit") return null;
+  if (t.period === "week") return `Weekly ×${t.quota}`;
+  if (t.period === "month") return t.quota > 1 ? `Monthly ×${t.quota}` : "Monthly";
   if (!t.weekdays || t.weekdays.length === 0) return "Daily";
   return t.weekdays
     .slice()
@@ -83,6 +85,14 @@ export function TrackableCard({
             <View style={styles.streakBadge}>
               <Flame size={12} strokeWidth={3} color={theme.color.fire} />
               <Text style={styles.streakText}>{status.streak}</Text>
+            </View>
+          )}
+          {status.periodProgress && (
+            <View style={styles.progressBadge}>
+              <Text style={styles.progressText}>
+                {status.periodProgress.completed}/{status.periodProgress.quota}{" "}
+                {trackable.period === "week" ? "this wk" : "this mo"}
+              </Text>
             </View>
           )}
           {projectedCombo > 1 && <Text style={styles.combo}>combo ×{projectedCombo}</Text>}
@@ -158,6 +168,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   streakText: { fontSize: 11, fontWeight: "700", color: theme.color.ink },
+  progressBadge: {
+    borderWidth: 2,
+    borderColor: theme.color.ink,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    backgroundColor: theme.color.yellow,
+  },
+  progressText: { fontSize: 11, fontWeight: "700", color: theme.color.ink },
   combo: { fontSize: 11, fontWeight: "700", color: theme.color.violet },
   payout: { marginLeft: "auto", fontSize: 12, fontWeight: "700", color: theme.color.ink },
   checkBtn: {

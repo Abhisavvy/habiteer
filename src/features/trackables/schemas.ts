@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createInsertSchema, createUpdateSchema } from "drizzle-zod";
 import { trackables } from "@/lib/db/schema";
 
-const FORM_FIELDS = ["kind", "name", "emoji", "difficulty", "coinValue", "weekdays"] as const;
+const FORM_FIELDS = ["kind", "name", "emoji", "difficulty", "coinValue", "weekdays", "period", "quota"] as const;
 
 const refinements = {
   kind: z.enum(["habit", "task"]),
@@ -10,9 +10,11 @@ const refinements = {
   difficulty: z.enum(["easy", "medium", "hard"]),
   coinValue: (schema: z.ZodNumber) => schema.int().positive(),
   weekdays: z.array(z.number().int().min(0).max(6)).min(1).nullable(),
+  period: z.enum(["day", "week", "month"]).nullable(),
+  quota: (schema: z.ZodNumber) => schema.int().positive(),
 };
 
-/** Validates the add-trackable form (`period`/`quota`/`userId` are derived in api.ts, not user input). */
+/** Validates the add-trackable form (`userId` is derived in api.ts, not user input). */
 export const insertTrackableSchema = createInsertSchema(trackables, refinements).pick(
   Object.fromEntries(FORM_FIELDS.map((f) => [f, true])) as Record<(typeof FORM_FIELDS)[number], true>
 );

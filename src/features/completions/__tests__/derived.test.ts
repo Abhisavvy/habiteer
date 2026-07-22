@@ -60,6 +60,18 @@ describe("trackableStatus", () => {
     const status = trackableStatus(t, completions, "2026-01-10");
     expect(status.streak).toBe(0);
   });
+
+  it("reports periodProgress for a week-quota habit, omits it for day habits", () => {
+    const weekly = trackable({ id: "t1", period: "week", quota: 3 });
+    const completions = [
+      completion({ trackableId: "t1", completedOn: "2025-12-30" }), // previous ISO week — doesn't count
+      completion({ trackableId: "t1", completedOn: "2026-01-05" }), // Mon, same ISO week as 01-07
+    ];
+    expect(trackableStatus(weekly, completions, "2026-01-07").periodProgress).toEqual({ completed: 1, quota: 3 });
+
+    const daily = trackable({ id: "t1" });
+    expect(trackableStatus(daily, completions, "2026-01-07").periodProgress).toBeUndefined();
+  });
 });
 
 describe("overallProgress", () => {
