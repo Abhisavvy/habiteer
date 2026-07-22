@@ -39,11 +39,20 @@ declare
   v_is_done     boolean;
   v_xp          int;
   v_coins       int;
+  v_freeze_balance  int;
+  v_freeze_spent    int := 0;
+  v_freeze_granted  int := 0;
+  v_total_xp_before int;
+  v_level_before    int;
+  v_level_after     int;
 begin
   select * into v_trackable from trackables where id = p_id; -- RLS-filtered
   if not found then
     raise exception 'trackable not found';
   end if;
+
+  -- Guarantees a row exists so every read below can be a plain SELECT.
+  insert into freeze_tokens (user_id, balance) values (auth.uid(), 0) on conflict (user_id) do nothing;
 
   -- Idempotency check runs BEFORE the archived-at guard: completing a task
   -- archives it in the same write, so a same-day retry must replay the
@@ -51,10 +60,12 @@ begin
   select * into v_existing from completions
     where trackable_id = p_id and completed_on = current_app_date();
   if found then
+    select balance into v_freeze_balance from freeze_tokens where user_id = auth.uid();
     return jsonb_build_object(
       'xp', v_existing.xp_earned,
       'coins', v_existing.coins_earned,
       'streak_after', v_existing.streak_after,
+      'freeze_tokens', v_freeze_balance,
       'level', to_jsonb((select li from level_info(
         (select coalesce(sum(xp_earned), 0)::int from completions where user_id = auth.uid())
       ) li))
@@ -65,13 +76,22 @@ begin
     raise exception 'trackable is archived';
   end if;
 
+  v_total_xp_before := (select coalesce(sum(xp_earned), 0)::int from completions where user_id = auth.uid());
+
   if v_trackable.kind = 'habit' then
-    -- Streak walk mirrors src/features/gamification/streak.ts's currentStreak:
-    -- today counts as done without a prior insert, so the TS lib's "grace"
-    -- branch (for projecting streak before today is marked done) never applies.
+    select balance into v_freeze_balance from freeze_tokens where user_id = auth.uid();
+
+    -- Streak walk mirrors src/features/gamification/streak.ts's currentStreak,
+    -- extended with freeze-token bridging: today counts as done without a
+    -- prior insert (the TS lib's "grace" branch never applies here), and a
+    -- missed scheduled day is bridged — streak continues uninterrupted,
+    -- one token spent — if a token is still available.
     v_cursor := current_app_date();
     v_streak := 0;
     for i in 0 .. 3999 loop -- mirrors streak.ts's MAX_LOOKBACK
+      -- A day before the trackable existed isn't a missed day — there was
+      -- nothing to do. Stop (don't break-vs-bridge a day that was never real).
+      exit when v_cursor < v_trackable.created_at::date;
       v_is_scheduled := v_trackable.weekdays is null
                          or array_length(v_trackable.weekdays, 1) is null
                          or extract(dow from v_cursor)::int = any(v_trackable.weekdays);
@@ -80,6 +100,9 @@ begin
                       or exists(select 1 from completions
                                 where trackable_id = p_id and completed_on = v_cursor);
         if v_is_done then
+          v_streak := v_streak + 1;
+        elsif v_freeze_balance - v_freeze_spent > 0 then
+          v_freeze_spent := v_freeze_spent + 1;
           v_streak := v_streak + 1;
         else
           exit;
@@ -90,6 +113,11 @@ begin
 
     v_xp := round(difficulty_base(v_trackable.difficulty) * combo_multiplier(v_streak));
     v_coins := v_trackable.coin_value; -- flat, editable per habit
+
+    -- Only habits earn XP, so only habits can cross a level boundary.
+    v_level_before := (select level from level_info(v_total_xp_before));
+    v_level_after := (select level from level_info(v_total_xp_before + v_xp));
+    v_freeze_granted := tokens_earned_between_levels(v_level_before, v_level_after);
   else -- task
     v_xp := 0;
     v_streak := 0;
@@ -97,17 +125,19 @@ begin
   end if;
 
   begin
-    insert into completions (trackable_id, user_id, completed_on, xp_earned, coins_earned, streak_after)
-      values (p_id, auth.uid(), current_app_date(), v_xp, v_coins, v_streak)
+    insert into completions (trackable_id, user_id, completed_on, xp_earned, coins_earned, streak_after, freeze_spent, freeze_granted)
+      values (p_id, auth.uid(), current_app_date(), v_xp, v_coins, v_streak, v_freeze_spent, v_freeze_granted)
       returning id into v_completion_id;
   exception when unique_violation then
     -- Lost a race with a concurrent identical call; replay the idempotent result.
     select * into v_existing from completions
       where trackable_id = p_id and completed_on = current_app_date();
+    select balance into v_freeze_balance from freeze_tokens where user_id = auth.uid();
     return jsonb_build_object(
       'xp', v_existing.xp_earned,
       'coins', v_existing.coins_earned,
       'streak_after', v_existing.streak_after,
+      'freeze_tokens', v_freeze_balance,
       'level', to_jsonb((select li from level_info(
         (select coalesce(sum(xp_earned), 0)::int from completions where user_id = auth.uid())
       ) li))
@@ -117,6 +147,15 @@ begin
   insert into coin_ledger (user_id, delta, kind, ref_id)
     values (auth.uid(), v_coins, 'earn', v_completion_id);
 
+  if v_freeze_spent > 0 or v_freeze_granted > 0 then
+    update freeze_tokens
+      set balance = greatest(0, least(freeze_token_max_balance(), balance - v_freeze_spent + v_freeze_granted))
+      where user_id = auth.uid()
+      returning balance into v_freeze_balance;
+  else
+    select balance into v_freeze_balance from freeze_tokens where user_id = auth.uid();
+  end if;
+
   if v_trackable.kind = 'task' then
     update trackables set archived_at = now() where id = p_id;
   end if;
@@ -125,6 +164,7 @@ begin
     'xp', v_xp,
     'coins', v_coins,
     'streak_after', v_streak,
+    'freeze_tokens', v_freeze_balance,
     'level', to_jsonb((select li from level_info(
       (select coalesce(sum(xp_earned), 0)::int from completions where user_id = auth.uid())
     ) li))
@@ -141,6 +181,7 @@ as $$
 declare
   v_trackable  trackables;
   v_completion completions;
+  v_freeze_balance int;
 begin
   select * into v_trackable from trackables where id = p_id; -- RLS-filtered
   if not found then
@@ -160,6 +201,16 @@ begin
 
   delete from completions where id = v_completion.id;
 
+  -- Reverse whatever THIS completion did to the freeze balance: refund any
+  -- spent token, revoke any granted one. Stored on the completion row itself
+  -- because other completions may have touched the same balance since.
+  insert into freeze_tokens (user_id, balance) values (auth.uid(), 0) on conflict (user_id) do nothing;
+  update freeze_tokens
+    set balance = greatest(0, least(freeze_token_max_balance(),
+      balance + v_completion.freeze_spent - v_completion.freeze_granted))
+    where user_id = auth.uid()
+    returning balance into v_freeze_balance;
+
   if v_trackable.kind = 'task' then
     update trackables set archived_at = null where id = p_id; -- symmetric with complete's archive
   end if;
@@ -167,6 +218,7 @@ begin
   return jsonb_build_object(
     'xp', -v_completion.xp_earned,
     'coins', -v_completion.coins_earned,
+    'freeze_tokens', v_freeze_balance,
     'level', to_jsonb((select li from level_info(
       (select coalesce(sum(xp_earned), 0)::int from completions where user_id = auth.uid())
     ) li))

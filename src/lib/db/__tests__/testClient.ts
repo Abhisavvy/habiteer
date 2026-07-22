@@ -24,6 +24,9 @@ type TrackableOverrides = Partial<{
   period: "day" | null;
   quota: number;
   weekdays: number[] | null;
+  /** Backdate for tests that seed historical completions predating "now" — the
+   * RPC now refuses to walk/bridge a streak past a trackable's real created_at. */
+  createdAt: string;
 }>;
 
 /** Inserts a `[TEST]`-prefixed trackable owned by the signed-in test user. */
@@ -39,6 +42,7 @@ export async function makeTrackable(overrides: TrackableOverrides = {}) {
     period: overrides.kind === "task" ? null : overrides.period ?? "day",
     quota: overrides.quota ?? 1,
     weekdays: overrides.weekdays ?? null,
+    ...(overrides.createdAt ? { created_at: overrides.createdAt } : {}),
   };
   const { data, error } = await testClient.from("trackables").insert(row).select().single();
   if (error) throw error;
@@ -90,6 +94,26 @@ export function todayUTC(offsetDays = 0): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offsetDays);
   return d.toISOString().slice(0, 10);
+}
+
+/** Test arrangement only — the real app never writes freeze_tokens directly. */
+export async function setFreezeBalance(balance: number) {
+  const { data: userData } = await testClient.auth.getUser();
+  const { error } = await testClient
+    .from("freeze_tokens")
+    .upsert({ user_id: userData.user!.id, balance }, { onConflict: "user_id" });
+  if (error) throw error;
+}
+
+export async function getFreezeBalance(): Promise<number> {
+  const { data: userData } = await testClient.auth.getUser();
+  const { data, error } = await testClient
+    .from("freeze_tokens")
+    .select("balance")
+    .eq("user_id", userData.user!.id)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.balance ?? 0;
 }
 
 /** Inserts a completions row directly, bypassing the RPC — for seeding streak history. */

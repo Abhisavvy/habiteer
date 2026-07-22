@@ -122,8 +122,62 @@ Known follow-ups (not blocking)
   button is tapped in the add/edit panel (simplest predictable behavior for
   v1; a user who wants a custom value picks effort first, then edits coins).
 
+## Phase 4 — Completion economy (done)
+Done
+- Check/undo button wired to `fn_complete_trackable`/`fn_undo_completion` on
+  every `TrackableCard`; streak flame + combo badge now shown (deliberately
+  omitted in Phase 3 since they'd always have been meaningless zeros).
+- Level bar, coin balance, and freeze-token badge in the header
+  (`src/features/completions/`: `api.ts`, `derived.ts` — pure, tested,
+  reuses `currentStreak`/`comboMultiplier`/`levelInfo` from the gamification
+  lib — and `useCompletions.ts`).
+- Floating "+N XP" text and a level-up overlay, ported from the old
+  prototype's animations (`FloatingXp.tsx`, `LevelUpOverlay.tsx`), per
+  PLAN.md §1's "every action must pay off visibly" thesis.
+- Completing a task shows a "Done ✓ — Undo" toast (`UndoToast.tsx`) since
+  it auto-archives and leaves the list immediately, so there's no card left
+  to tap otherwise.
+- **Freeze tokens** (scope resolved with the user — PLAN.md's own docs
+  disagreed on v1/v2, went with the 3-of-4-references majority): 1 earned
+  every 5 levels, capped at 3 banked; automatically bridges a missed
+  scheduled day instead of breaking the streak. New `freeze_tokens` table +
+  `completions.freeze_spent`/`freeze_granted` columns (Drizzle migration);
+  `tokensEarnedBetweenLevels()` pure function mirrors the same formula
+  generated into SQL, so client and server can't drift.
+- 12 new tests (5 RPC integration + 4 `freeze.ts` + 3 `derived.ts`; 41 total,
+  all green); `tsc --noEmit` clean.
+
+Bugs found + fixed this session
+- **Real logic bug**: the streak walk had no concept of a trackable's own
+  `created_at`, so a brand-new habit's first-ever completion could treat
+  "yesterday" (before the habit existed) as a missed day. Harmless before
+  freeze tokens (breaking on a fake gap and a real one looked identical), but
+  freeze-bridging made it visibly wrong (a token could be spent bridging a
+  day that was never real). Fixed: the walk now stops at `created_at`,
+  neither breaking nor bridging past it.
+- **Test-isolation gap**: `freeze_tokens` is global per-user mutable state,
+  not scoped to any one trackable, so a leftover balance from an earlier
+  test (or an earlier *failed* run) silently leaked into unrelated tests.
+  Fixed with a `beforeEach` that resets the test user's balance to 0 before
+  every test; only the tests that actually exercise freeze tokens set their
+  own balance explicitly.
+- **Network**: `DATABASE_URL`'s direct-connection hostname started resolving
+  IPv6-only, and this network has no IPv6 route — `scripts/apply-sql.ts`
+  stopped working entirely. Switched to Supabase's session pooler connection
+  string (IPv4-compatible). Unrelated to the app itself, but worth knowing if
+  `db:apply-sql`/`db:push` ever mysteriously stop working again.
+- **Dev-loop**: after the Mac woke from sleep, its LAN IP changed subnets and
+  the phone couldn't reach it (Expo Go: "Failed to download remote update").
+  Switched to `npx expo start --tunnel` (routes through the internet, not
+  local network) — more reliable going forward, worth defaulting to it.
+
+Known follow-ups (not blocking)
+- No advisory locking against concurrent double-complete/double-redeem races
+  (documented in `rpc.README.md`); balance-checks predate this phase.
+- `trackables.kind`/`difficulty` and `rewards.kind` still have no real CHECK
+  constraint at the DB level (found in Phase 2, still not fixed).
+
 ## Next
-- Phase 4: completion economy wired to RPCs (XP, coins, combo, level bar, freeze tokens).
 - Phase 5: personal rewards + basic weekly leaderboard.
 - v2: Android widget -> shared rewards/groups -> quota recurrence -> stats -> leagues -> cosmetics -> reduction mode.
 

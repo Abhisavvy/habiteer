@@ -64,3 +64,31 @@ begin
   return query select v_level, v_remaining, public.level_req_for(v_level);
 end;
 $$;
+
+create or replace function public.freeze_token_level_interval()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select 5;
+$$;
+
+create or replace function public.freeze_token_max_balance()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select 3;
+$$;
+
+create or replace function public.tokens_earned_between_levels(level_before int, level_after int)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select (level_after / public.freeze_token_level_interval())
+       - (level_before / public.freeze_token_level_interval());
+$$;

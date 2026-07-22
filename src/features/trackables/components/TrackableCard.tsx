@@ -1,9 +1,11 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { Pencil, X } from "lucide-react-native";
+import { Pencil, X, Check, Flame } from "lucide-react-native";
 import { theme } from "@/constants/theme";
 import { xpForHabit } from "@/features/gamification/xp";
 import { taskCoins } from "@/features/gamification/coins";
+import { comboMultiplier } from "@/features/gamification/combo";
 import type { Trackable } from "../api";
+import type { TrackableStatus } from "@/features/completions/derived";
 
 const DIFF_TINT: Record<Trackable["difficulty"], string> = {
   easy: theme.color.jade,
@@ -23,25 +25,34 @@ function scheduleLabel(t: Trackable): string | null {
     .join(", ");
 }
 
-function payoutLabel(t: Trackable): string {
+/** XP/coin payout for completing right now — combo applies to the streak *after* this completion. */
+function payoutLabel(t: Trackable, projectedStreak: number): string {
   if (t.kind === "task") return `+${taskCoins(t.difficulty)} coins`;
-  return `+${xpForHabit(t.difficulty, 0)} XP · +${t.coinValue} coins`;
+  return `+${xpForHabit(t.difficulty, projectedStreak)} XP · +${t.coinValue} coins`;
 }
 
 export function TrackableCard({
   trackable,
+  status,
   onEdit,
   onArchive,
+  onToggleComplete,
+  completing,
 }: {
   trackable: Trackable;
+  status: TrackableStatus;
   onEdit: () => void;
   onArchive: () => void;
+  onToggleComplete: () => void;
+  completing?: boolean;
 }) {
   const tint = DIFF_TINT[trackable.difficulty];
   const schedule = scheduleLabel(trackable);
+  const projectedStreak = status.isDoneToday ? status.streak : status.streak + 1;
+  const projectedCombo = comboMultiplier(projectedStreak);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, status.isDoneToday && styles.cardDone]}>
       <View style={[styles.emojiBox, { backgroundColor: tint }]}>
         <Text style={styles.emoji}>{trackable.emoji}</Text>
       </View>
@@ -68,9 +79,24 @@ export function TrackableCard({
               <Text style={styles.scheduleText}>{schedule}</Text>
             </View>
           )}
-          <Text style={styles.payout}>{payoutLabel(trackable)}</Text>
+          {status.streak > 0 && (
+            <View style={styles.streakBadge}>
+              <Flame size={12} strokeWidth={3} color={theme.color.fire} />
+              <Text style={styles.streakText}>{status.streak}</Text>
+            </View>
+          )}
+          {projectedCombo > 1 && <Text style={styles.combo}>combo ×{projectedCombo}</Text>}
+          <Text style={styles.payout}>{payoutLabel(trackable, projectedStreak)}</Text>
         </View>
       </View>
+      <Pressable
+        style={[styles.checkBtn, status.isDoneToday && styles.checkBtnDone]}
+        onPress={onToggleComplete}
+        disabled={completing}
+        aria-label={status.isDoneToday ? `Undo ${trackable.name}` : `Complete ${trackable.name}`}
+      >
+        <Check size={20} strokeWidth={4} color={status.isDoneToday ? "#fff" : theme.color.ink} />
+      </Pressable>
     </View>
   );
 }
@@ -86,6 +112,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius,
     padding: 12,
   },
+  cardDone: { opacity: 0.55 },
   emojiBox: {
     width: 46,
     height: 46,
@@ -119,5 +146,29 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   scheduleText: { fontSize: 11, fontWeight: "700", color: theme.color.ink },
+  streakBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderWidth: 2,
+    borderColor: theme.color.ink,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    backgroundColor: "#fff",
+  },
+  streakText: { fontSize: 11, fontWeight: "700", color: theme.color.ink },
+  combo: { fontSize: 11, fontWeight: "700", color: theme.color.violet },
   payout: { marginLeft: "auto", fontSize: 12, fontWeight: "700", color: theme.color.ink },
+  checkBtn: {
+    width: 44,
+    height: 44,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  checkBtnDone: { backgroundColor: theme.color.jade },
 });

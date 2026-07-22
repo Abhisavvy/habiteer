@@ -32,6 +32,8 @@ export const completions = pgTable(
     xpEarned: integer("xp_earned").notNull(),
     coinsEarned: integer("coins_earned").notNull(),
     streakAfter: integer("streak_after").notNull(),
+    freezeSpent: integer("freeze_spent").notNull().default(0),
+    freezeGranted: integer("freeze_granted").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({ oncePerDay: unique().on(t.trackableId, t.completedOn) })
@@ -44,6 +46,11 @@ export const coinLedger = pgTable("coin_ledger", {
   kind: text("kind").notNull(), // 'earn' | 'redeem' | 'contribute'
   refId: uuid("ref_id"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const freezeTokens = pgTable("freeze_tokens", {
+  userId: uuid("user_id").primaryKey().references(() => profiles.id),
+  balance: integer("balance").notNull().default(0),
 });
 
 export const rewards = pgTable("rewards", {

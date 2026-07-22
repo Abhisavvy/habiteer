@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
-import { beforeAll, describe, it, expect } from "vitest";
+import { beforeAll, beforeEach, describe, it, expect } from "vitest";
 import { comboMultiplier } from "@/features/gamification/combo";
 import { taskCoins } from "@/features/gamification/coins";
 import {
@@ -14,10 +14,20 @@ import {
   ledgerBalance,
   todayUTC,
   seedHistoricalCompletion,
+  setFreezeBalance,
+  getFreezeBalance,
 } from "./testClient";
 
 beforeAll(async () => {
   await signInTestUser();
+});
+
+// freeze_tokens is global per-user mutable state, not scoped to any one
+// trackable — reset it before every test so a leftover balance from an
+// earlier test (or an earlier failed run) can never silently leak in.
+// Tests that actually exercise freeze tokens set their own balance explicitly.
+beforeEach(async () => {
+  await setFreezeBalance(0);
 });
 
 describe("fn_complete_trackable — habit", () => {
@@ -77,7 +87,7 @@ describe("fn_complete_trackable — habit", () => {
   });
 
   it("applies the combo multiplier once a streak qualifies", async () => {
-    const t = await makeTrackable({ kind: "habit", difficulty: "medium", coinValue: 20 });
+    const t = await makeTrackable({ kind: "habit", difficulty: "medium", coinValue: 20, createdAt: todayUTC(-10) });
     try {
       for (let i = 6; i >= 1; i--) {
         await seedHistoricalCompletion(t.id, todayUTC(-i), 20, 20, 7 - i);
@@ -93,7 +103,12 @@ describe("fn_complete_trackable — habit", () => {
 
   it("skips unscheduled weekdays without breaking the streak", async () => {
     const todayDow = new Date(todayUTC() + "T00:00:00Z").getUTCDay();
-    const t = await makeTrackable({ kind: "habit", difficulty: "easy", weekdays: [todayDow] });
+    const t = await makeTrackable({
+      kind: "habit",
+      difficulty: "easy",
+      weekdays: [todayDow],
+      createdAt: todayUTC(-10),
+    });
     try {
       // Prior occurrence of the same weekday is 7 days back; every day in between is unscheduled.
       await seedHistoricalCompletion(t.id, todayUTC(-7), 10, 10, 1);
@@ -247,6 +262,112 @@ describe("fn_redeem_reward", () => {
     } finally {
       await cleanupReward(reward.id);
       await cleanupTrackable(funding.id);
+    }
+  });
+});
+
+describe("freeze tokens", () => {
+  it("grants a token when a completion crosses a level boundary", async () => {
+    // Level 5 starts at exactly 1369 total XP (sum of reqFor(1..4)). Fund the
+    // user to 1359 via a throwaway trackable, then a 10-XP easy habit tips
+    // the total to 1369 — crossing level 4 -> 5 exactly, granting 1 token.
+    const funding = await makeTrackable({ kind: "habit", difficulty: "easy" });
+    const t = await makeTrackable({ kind: "habit", difficulty: "easy" });
+    await setFreezeBalance(0);
+    try {
+      await seedHistoricalCompletion(funding.id, todayUTC(-100), 1359, 0, 0);
+      const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(error).toBeNull();
+      expect(data.level.level).toBe(5);
+      expect(data.freeze_tokens).toBe(1);
+      expect(await getFreezeBalance()).toBe(1);
+    } finally {
+      await cleanupTrackable(t.id);
+      await cleanupTrackable(funding.id);
+    }
+  });
+
+  it("bridges a missed scheduled day when a token is available", async () => {
+    const todayDow = new Date(todayUTC() + "T00:00:00Z").getUTCDay();
+    const t = await makeTrackable({
+      kind: "habit",
+      difficulty: "easy",
+      weekdays: [todayDow],
+      createdAt: todayUTC(-20),
+    });
+    await setFreezeBalance(1);
+    try {
+      // Two occurrences back (14 days, since this habit only occurs on todayDow):
+      // completed. One occurrence back (7 days): missed — the gap to bridge.
+      await seedHistoricalCompletion(t.id, todayUTC(-14), 10, 10, 1);
+      const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(error).toBeNull();
+      expect(data.streak_after).toBe(3); // -14 counted, -7 bridged, today counted
+      expect(data.freeze_tokens).toBe(0); // the one token was spent
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("still breaks the streak on a gap when no tokens are available", async () => {
+    const todayDow = new Date(todayUTC() + "T00:00:00Z").getUTCDay();
+    const t = await makeTrackable({
+      kind: "habit",
+      difficulty: "easy",
+      weekdays: [todayDow],
+      createdAt: todayUTC(-20),
+    });
+    await setFreezeBalance(0);
+    try {
+      await seedHistoricalCompletion(t.id, todayUTC(-14), 10, 10, 1);
+      const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(error).toBeNull();
+      expect(data.streak_after).toBe(1); // no token to bridge the -7 gap
+      expect(data.freeze_tokens).toBe(0);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("undo revokes a token granted by the completion it reverses", async () => {
+    const funding = await makeTrackable({ kind: "habit", difficulty: "easy" });
+    const t = await makeTrackable({ kind: "habit", difficulty: "easy" });
+    await setFreezeBalance(0);
+    try {
+      await seedHistoricalCompletion(funding.id, todayUTC(-100), 1359, 0, 0);
+      const complete = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(complete.data.freeze_tokens).toBe(1);
+
+      const undo = await testClient.rpc("fn_undo_completion", { p_id: t.id });
+      expect(undo.error).toBeNull();
+      expect(undo.data.freeze_tokens).toBe(0);
+      expect(await getFreezeBalance()).toBe(0);
+    } finally {
+      await cleanupTrackable(t.id);
+      await cleanupTrackable(funding.id);
+    }
+  });
+
+  it("undo refunds a token spent by the completion it reverses", async () => {
+    const todayDow = new Date(todayUTC() + "T00:00:00Z").getUTCDay();
+    const t = await makeTrackable({
+      kind: "habit",
+      difficulty: "easy",
+      weekdays: [todayDow],
+      createdAt: todayUTC(-20),
+    });
+    await setFreezeBalance(1);
+    try {
+      await seedHistoricalCompletion(t.id, todayUTC(-14), 10, 10, 1);
+      const complete = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(complete.data.freeze_tokens).toBe(0);
+
+      const undo = await testClient.rpc("fn_undo_completion", { p_id: t.id });
+      expect(undo.error).toBeNull();
+      expect(undo.data.freeze_tokens).toBe(1);
+      expect(await getFreezeBalance()).toBe(1);
+    } finally {
+      await cleanupTrackable(t.id);
     }
   });
 });

@@ -6,6 +6,8 @@ import {
   COMBO_TIERS,
   LEVEL_XP_BASE,
   LEVEL_XP_EXPONENT,
+  FREEZE_TOKEN_LEVEL_INTERVAL,
+  FREEZE_TOKEN_MAX_BALANCE,
 } from "../src/features/gamification/constants";
 
 /**
@@ -82,6 +84,34 @@ begin
   end loop;
   return query select v_level, v_remaining, public.level_req_for(v_level);
 end;
+$$;
+
+create or replace function public.freeze_token_level_interval()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select ${FREEZE_TOKEN_LEVEL_INTERVAL};
+$$;
+
+create or replace function public.freeze_token_max_balance()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select ${FREEZE_TOKEN_MAX_BALANCE};
+$$;
+
+create or replace function public.tokens_earned_between_levels(level_before int, level_after int)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select (level_after / public.freeze_token_level_interval())
+       - (level_before / public.freeze_token_level_interval());
 $$;
 `;
 

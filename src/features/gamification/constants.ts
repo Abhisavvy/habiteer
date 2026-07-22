@@ -16,3 +16,7 @@ export const COMBO_TIERS = [
 /** Level curve: reqFor(level) = round(LEVEL_XP_BASE * level^LEVEL_XP_EXPONENT). */
 export const LEVEL_XP_BASE = 100;
 export const LEVEL_XP_EXPONENT = 1.3;
+
+/** Freeze tokens: streak insurance. Earned every N levels, capped at a small balance. */
+export const FREEZE_TOKEN_LEVEL_INTERVAL = 5;
+export const FREEZE_TOKEN_MAX_BALANCE = 3;
