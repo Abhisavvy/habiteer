@@ -22,6 +22,19 @@ const config: ExpoConfig = {
     "expo-secure-store",
     "expo-font",
     [
+      "expo-splash-screen",
+      {
+        // Native pre-JS splash — shown for the instant before the custom
+        // AppSplash (app/_layout.tsx) mounts and takes over the animation.
+        // No plugin was configured before, so this screen was showing
+        // Expo's generic default rather than the app icon.
+        image: "./assets/icon.png",
+        imageWidth: 200,
+        resizeMode: "contain",
+        backgroundColor: "#7B5CFF",
+      },
+    ],
+    [
       "react-native-android-widget",
       {
         widgets: [

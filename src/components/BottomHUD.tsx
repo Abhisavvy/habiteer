@@ -12,7 +12,6 @@ const TABS: { name: string; label: string }[] = [
   { name: "rewards", label: "Rewards" },
   { name: "leaderboard", label: "Board" },
   { name: "groups", label: "Groups" },
-  { name: "profile", label: "Profile" },
 ];
 
 /** Icon paths extracted verbatim from the design's BottomHUD component (S9), except
@@ -52,25 +51,19 @@ function TabIcon({ name, color }: { name: string; color: string }) {
           <Path d="M21.7 20c0-2.9-2.1-4.7-4.6-5.4" />
         </Svg>
       );
-    case "profile":
-      return (
-        <Svg width={25} height={25} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-          <Circle cx="12" cy="8" r="4" />
-          <Path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
-        </Svg>
-      );
     default:
       return null;
   }
 }
 
 /**
- * Custom bottom tab bar matching the design's BottomHUD (S9) exactly for the
- * 4 tabs it covers (Today/Rewards/Board/Profile); Groups — added after the
- * design predates it — gets a 5th equally-spaced column in the same style.
- * The design's raised "+" occupies one of 5 flex slots; since we need 5 real
- * tab slots too, it's an absolute overlay centered on the bar instead of a
- * flex child, so every tab keeps its exact 56px column spec untouched.
+ * Custom bottom tab bar matching the design's BottomHUD (S9): 4 tabs
+ * (Today/Rewards/Board/Groups) + a raised center "+". Profile moved off
+ * the tab bar entirely — reachable via the avatar button on Today — so
+ * this is back to the mockup's exact 5-slot structure (2 tabs, "+", 2
+ * tabs); Groups (postdating the design) fills the slot the mockup's own
+ * "Profile" tab occupied, using a hand-drawn icon in the same stroke
+ * language rather than the mockup's Profile icon.
  */
 export function BottomHUD({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();

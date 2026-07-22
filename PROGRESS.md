@@ -690,5 +690,53 @@ now details B/C/D/E at the same level as A and marks the Groups gap
 resolved, and `PLAN.md` §13 reflects v1/v2 items 1–8 as done, with the
 redesign slotted in as an ad hoc addition after item 8.
 
+## v2 UX/UI redesign — post-commit follow-ups (done)
+Two direct asks after the Phases B–E + Groups restyle commit:
+
+1. **Profile off the bottom HUD.** Moved `app/(tabs)/profile.tsx` →
+   `app/profile.tsx` — out of the tab group entirely, not just hidden
+   from the tab bar's button list — matching the existing `group/[id].tsx`
+   stack-push pattern. It's still reachable from the same violet avatar
+   button on Today (`router.navigate("/profile")` — route path is
+   unchanged since parenthesized groups don't appear in the URL), now
+   with its own back arrow since it's no longer a tab peer. `BottomHUD.tsx`
+   is back down to 4 tabs (Today/Rewards/Board/Groups) + the raised "+",
+   which happens to restore the mockup's exact 5-slot structure (2 tabs,
+   "+", 2 tabs) — Groups fills the slot the mockup's own Profile tab
+   occupied, in place of Profile's now-unused extracted icon.
+2. **Asset audit** — checked the design deliverable and everything else
+   supplied for anything unused. The deliverable itself is 100% CSS/SVG,
+   no embedded raster images at all (confirmed via a literal search for
+   `<img>`/`data:image` in the HTML) — nothing missed there. Two other
+   Habiteer-named files turned up in Downloads but are both historical,
+   already superseded: `Habiteer.zip` is a backup of the Phase 1 scaffold
+   from before this session; `habiteer.jsx` is the very first web
+   prototype (2-tab, no rewards/groups/freeze) that `theme.ts`'s "ported
+   from the validated prototype" comment already refers to — both
+   pre-date and are fully subsumed by the current app.
+   - Did find one real gap while auditing, unrelated to the design
+     deliverable itself: **no native splash-screen image was ever
+     configured**. `app/_layout.tsx`'s custom animated `AppSplash` only
+     takes over once the JS bundle evaluates — before that, Android was
+     showing Expo's generic default splash, not the app's branding. Wired
+     `expo-splash-screen`'s config plugin to the existing `assets/icon.png`
+     on a violet background, so the native pre-JS moment now matches too.
+- `npx tsc --noEmit` clean; full `vitest run` green (81/81). Native
+  rebuild required (splash plugin is native config) — `expo prebuild` +
+  `expo run:android` done, verified on device: bottom HUD now shows 4
+  tabs, avatar → Profile opens correctly with a working back arrow.
+
+**Still open, would need a genuinely new design pass, not a restyle, if
+wanted:**
+- **Reward images** (optional photo per reward) — needs a new Supabase
+  Storage bucket + RLS storage policies + `expo-image-picker`, a real
+  backend capability, not a visual change. Explicitly excluded from
+  Phase D per the original plan.
+- **Full app dark mode** — the design deliverable itself frames this as
+  "exploratory, not required this pass" (only the widget got a dark
+  variant, which is done). Extending it to the whole app would mean a
+  second full token set + per-screen verification, on the scale of
+  redesign Phases B–E again.
+
 ## Bugs / blockers
 - None blocking. See "Known follow-ups" above for accepted v1/v2 gaps.

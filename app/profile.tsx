@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { View, Text, Pressable, TextInput, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
+import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ArrowLeft } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
@@ -80,7 +82,12 @@ export default function Profile() {
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Profile</Text>
+          <View style={styles.headerLeft}>
+            <HardShadow style={styles.backBtn} onPress={() => router.back()} aria-label="Back">
+              <ArrowLeft size={18} strokeWidth={2.5} color={theme.color.ink} />
+            </HardShadow>
+            <Text style={styles.title}>Profile</Text>
+          </View>
           <HardShadow style={styles.editBtn} onPress={startEditing} aria-label="Edit name">
             <Text style={styles.editBtnText}>✎</Text>
           </HardShadow>
@@ -214,6 +221,22 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.paper },
   scroll: { paddingHorizontal: 16, paddingTop: 54, paddingBottom: 40, gap: 15 },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
   title: { fontWeight: "800", fontSize: 22, color: theme.color.ink, fontFamily: fonts.display700 },
   editBtn: {
     width: 36,
