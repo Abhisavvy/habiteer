@@ -177,9 +177,46 @@ Known follow-ups (not blocking)
 - `trackables.kind`/`difficulty` and `rewards.kind` still have no real CHECK
   constraint at the DB level (found in Phase 2, still not fixed).
 
+## Phase 5 — Personal rewards + basic weekly leaderboard (done — v1 complete)
+Done
+- **Real bottom-tab navigation** (confirmed with user over the old
+  prototype's in-page toggle): `app/(tabs)/` — Today (moved from
+  `app/index.tsx`, unchanged), Rewards, Ranks. `app/_layout.tsx`'s
+  post-auth redirect now targets `/(tabs)`.
+- `src/features/rewards/`: mirrors `src/features/trackables/`'s exact
+  layered structure (`schemas.ts` via drizzle-zod, `api.ts`,
+  `useRewards.ts`, `RewardCard`/`RewardPanel`). Redeeming calls the
+  already-tested `fn_redeem_reward` RPC from Phase 2 — no new backend
+  logic needed this phase at all, confirmed by reading the live DB
+  directly: `weekly_leaderboard` (created in Phase 1's `rls.sql`, never
+  used until now) already has the right grants and already bypasses
+  per-row RLS correctly (created without `security_invoker`, Postgres
+  default `false`), so it was ready to query as-is.
+- `src/features/leaderboard/`: reads `weekly_leaderboard` directly (no
+  RPC — it's a read, matches the "reads via RLS-protected queries"
+  architecture split), highlights the signed-in user's own row as "You".
+- Verified live on device: add/redeem a reward (coins deduct, reward
+  disappears), the insufficient-funds error surfaces cleanly on an
+  intentionally-expensive one, leaderboard shows the account correctly.
+- No new pure logic this phase (rewards CRUD + leaderboard read are both
+  thin wiring over already-tested pieces) — no new test suites; existing
+  41 stayed green throughout, `tsc --noEmit` clean.
+
+**v1 is now feature-complete** per PLAN.md §13's phase list (accounts +
+cross-device, habits + tasks, XP/coins/combo/levels/freeze tokens, personal
+rewards, basic weekly leaderboard). Known follow-ups below are accepted gaps,
+not blockers.
+
+Known follow-ups (not blocking)
+- No unarchive UI for rewards either (same accepted gap as trackables from
+  Phase 3) — un-redeemed rewards can only be deleted, not un-deleted.
+- Leaderboard has no seed/fake data — with few real accounts registered, it
+  may show just one or two rows for a while. Expected, not a bug.
+
 ## Next
-- Phase 5: personal rewards + basic weekly leaderboard.
-- v2: Android widget -> shared rewards/groups -> quota recurrence -> stats -> leagues -> cosmetics -> reduction mode.
+- v2, in priority order per PLAN.md §13: Android home-screen widget → shared
+  rewards/groups → week/month quota recurrence → gamified stats page →
+  league tiers → cosmetics/unlocks → reduction mode.
 
 ## Bugs / blockers
 - None blocking. See "Known follow-ups" above for accepted v1 gaps.

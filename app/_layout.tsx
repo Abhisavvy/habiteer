@@ -13,7 +13,7 @@ export default function RootLayout() {
 
   const inAuthGroup = segments[0] === "(auth)";
   if (!session && !inAuthGroup) return <Redirect href="/(auth)/sign-in" />;
-  if (session && inAuthGroup) return <Redirect href="/" />;
+  if (session && inAuthGroup) return <Redirect href="/(tabs)" />;
 
   return (
     <QueryClientProvider client={queryClient}>
