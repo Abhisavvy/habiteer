@@ -520,9 +520,40 @@ begin
 end;
 $$;
 
+-- v3 Gap #3: group shared-streak activity feed.
+-- Returns the days each member of a group logged >=1 completion since p_since.
+-- SECURITY DEFINER so it can read co-members' activity DAYS only (never habit
+-- names/details) while RLS keeps `completions` otherwise owner-private; guarded
+-- so only a member of the group may call it. Powers the client-side
+-- groupStreak()/membersDoneToday() calc — no cron, and because it derives from
+-- completions live, undo needs no special handling.
+create or replace function public.fn_group_activity(p_group_id uuid, p_since date)
+returns table(user_id uuid, day date)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$
+begin
+  if not exists (
+    select 1 from group_members gm where gm.group_id = p_group_id and gm.user_id = auth.uid()
+  ) then
+    raise exception 'not a member of this group';
+  end if;
+
+  return query
+    select distinct c.user_id, c.completed_on as day
+    from completions c
+    join group_members gm on gm.user_id = c.user_id
+    where gm.group_id = p_group_id
+      and c.completed_on >= p_since;
+end;
+$$;
+
 grant execute on function public.fn_complete_trackable(uuid) to authenticated;
 grant execute on function public.fn_undo_completion(uuid) to authenticated;
 grant execute on function public.fn_redeem_reward(uuid) to authenticated;
 grant execute on function public.fn_join_group(text) to authenticated;
 grant execute on function public.fn_contribute_to_reward(uuid, int) to authenticated;
 grant execute on function public.fn_sync_league() to authenticated;
+grant execute on function public.fn_group_activity(uuid, date) to authenticated;

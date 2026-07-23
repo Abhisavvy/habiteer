@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { insertGroupSchema, type GroupFormValues } from "./schemas";
+import type { ActivityRow } from "./streak";
 
 export type Group = {
   id: string;
@@ -83,6 +84,23 @@ export async function createGroup(values: GroupFormValues): Promise<Group> {
     if (error.code !== "23505") throw error;
   }
   throw new Error("Couldn't generate a unique invite code — try again.");
+}
+
+/** Days each group member logged ≥1 completion over the trailing window — the
+ * raw feed for the shared group streak. Reads co-members' activity DAYS only
+ * (never habit details) via the security-definer `fn_group_activity`. */
+export async function fetchGroupActivity(groupId: string, sinceDays = 60): Promise<ActivityRow[]> {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - sinceDays);
+  const { data, error } = await supabase.rpc("fn_group_activity", {
+    p_group_id: groupId,
+    p_since: since.toISOString().slice(0, 10),
+  });
+  if (error) throw error;
+  return ((data as Record<string, unknown>[]) ?? []).map((r) => ({
+    userId: r.user_id as string,
+    day: r.day as string,
+  }));
 }
 
 export async function joinGroup(code: string): Promise<{ id: string; name: string; inviteCode: string }> {

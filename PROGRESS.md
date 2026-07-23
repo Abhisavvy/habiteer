@@ -1319,7 +1319,62 @@ together as the first v3 batch.
     + `npm install` + fresh Metro `--clear`.
 - **Uncommitted** — this v3 batch joins Phases 11/12/13 in the working tree.
 
+## v3 Gap #3 — Group shared streak (social accountability) (done, device-test pending)
+Second competitor-gap build (the research's relationship-accountability lever,
++22% daily completion for shared streaks). Implemented as a **group shared
+streak** reusing the existing groups (Habiteer's mutual-invite "known people"),
+not a new pairwise-friend system.
+
+- **Mechanic**: a group's streak = consecutive days on which EVERY current
+  member logged ≥1 completion ("showed up"); resets when anyone misses. Mirrors
+  the personal day-streak grace (today never counts as a miss until the day
+  ends). Plus a per-member "done today?" row for the nudge (✅ You / ⏳ Alex).
+- **Server**: one new security-definer RPC `fn_group_activity(p_group_id,
+  p_since)` → `(user_id, day)` rows, deriving active days from `completions`
+  for all members of a group the caller belongs to (guarded: non-members get an
+  exception). Exposes activity DAYS only, never habit details, so RLS stays
+  owner-private on `completions`. **No schema change → no `db:push` → no
+  RLS-wipe risk**; applied via `db:apply-sql`. Because it derives live from
+  completions, undo needs no special handling.
+  - **Fixed a latent rls.sql non-idempotency along the way**: the
+    `league_standings` policy had no `drop policy if exists` guard, so
+    `db:apply-sql` without a preceding push-wipe failed ("policy already
+    exists") — which had been masked because every prior apply followed a
+    push that wiped policies first. Added the guard; apply-sql is now cleanly
+    idempotent on the SQL-only path. Verified 12 policies, 0 RLS-disabled
+    tables, RPC present.
+- **Pure logic (TDD)**: `src/features/groups/streak.ts` — `groupStreak()` +
+  `membersDoneToday()`. `streak.test.ts` (8 cases: all-done incl today; today
+  grace holds through yesterday; past-miss breaks; grace-then-break-to-0;
+  single-member = own streak; empty; non-member rows ignored) red→green.
+- **Client**: `fetchGroupActivity` + `useGroupActivityQuery`; `group/[id].tsx`
+  gains a "🔥 N-day group streak" banner + a Today per-member ✅/⏳ status row
+  (self labeled "You"; other members' names remain RLS-limited as before).
+- **Freeze auto-apply (research's other streak lever) was already built** —
+  `fn_complete_trackable` already bridges missed scheduled days by spending
+  freeze tokens. No work needed; noted rather than padded.
+- `npx tsc --noEmit` clean; full `vitest run`: **123 passing** (up from 115 —
+  the 8 group-streak tests), same 3 pre-existing drift failures.
+- **Deferred, stated**: time-limited quests/events (Gap #3's other lever — a
+  distinct larger system); a dedicated pairwise-friends model (groups already
+  serve).
+- **Device-verified (2026-07-23)**: seeded a "Streak Squad" group for the
+  device account (mouli9517) directly via the DB (bypassing the Lv3 create
+  gate); the group screen showed "🔥 2-day group streak" + a Today row with a
+  green "✅ You" chip — streak = 2, matching the account's 07-23 + 07-22
+  activity. Full path (RPC → fetchGroupActivity → groupStreak → UI) confirmed.
+  Multi-member ⏳ state not shown on-device (needs a 2nd account with activity);
+  covered by the unit tests. NOTE: a "Streak Squad" test group remains on the
+  live account — harmless seeded data, remove if unwanted.
+  - **Metro stale-bundle gotcha (cost several device cycles)**: the running
+    Metro's file watcher silently missed the newly-created `groups/streak.ts`
+    etc., so it kept serving a bundle WITHOUT the new screen — the group screen
+    rendered its old layout through multiple app cold-restarts. Diagnosed by
+    `curl localhost:8081/index.bundle | grep "<new UI string>"` → 0 matches.
+    Fixed by killing Metro on 8081 and restarting `expo start --clear`;
+    re-grepped the bundle (1 match) before the device showed the new UI.
+
 ## Bugs / blockers
-- Phases 12 & 13 device verification still pending (user deferring); the v3
-  batch IS now device-verified (see above).
+- Phases 12 & 13 + Gap #3 device verification pending (user deferring); the
+  v3 reminders/sound batch IS device-verified (see above).
 - Otherwise none blocking. See "Known follow-ups" for accepted v1/v2 gaps.

@@ -205,6 +205,7 @@ create policy "own trackables" on trackables for all
 
 alter table league_standings enable row level security;
 
+drop policy if exists "own league standings" on league_standings;
 create policy "own league standings" on league_standings for all
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
