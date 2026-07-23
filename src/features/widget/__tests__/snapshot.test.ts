@@ -122,8 +122,8 @@ describe("capSnapshotRows", () => {
 describe("rowsForHeight", () => {
   it("shows more rows for a taller widget", () => {
     expect(rowsForHeight(80)).toBe(1);
-    expect(rowsForHeight(150)).toBe(2);
-    expect(rowsForHeight(220)).toBe(3);
+    expect(rowsForHeight(150)).toBe(1);
+    expect(rowsForHeight(220)).toBe(2);
     expect(rowsForHeight(300)).toBe(4);
   });
 });

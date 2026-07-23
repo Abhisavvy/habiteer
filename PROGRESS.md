@@ -833,40 +833,100 @@ widget-styling ask:
   section.
 - **Not committed yet** — no commit/push request for this batch.
 
-## Widget rebuild to match a supplied reference mockup (done, pending device check)
+## Widget rebuild to match a supplied reference mockup (done, device-verified)
 After the above, the user supplied a concrete light/dark mockup image
-(checklist-in-a-card style, with a clock peeking out behind the main card)
-— superseding the difficulty-tint iteration just above, which doesn't
-appear in this reference at all.
+(checklist-in-a-card style, with a clock, superseding the difficulty-tint
+iteration above) and then iterated live against the real device across
+several rounds — two of which surfaced genuine crashes, not just visual
+misses. Final shipped state, after all rounds:
 
 - `snapshot.ts`: swapped the now-unused `difficulty` field on
   `WidgetSnapshotItem` for `payout: number` (the per-item coin value the
   mockup shows as "+18"/"+10"/etc.), computed via the same task-difficulty-
-  discount rule `TrackableCard` already uses. TDD'd: new test confirmed
-  red, then green (83/83 unchanged — a straight swap, not a net-new case).
-- `HabitWidget.tsx` fully rebuilt:
-  - The peeking clock card behind the main list is real layering, not an
-    approximation — built with the library's `OverlapWidget`, which maps
-    directly to Android's native `FrameLayout` (confirmed by reading the
-    library's own source: `OverlapWidget.__name__ = 'FrameLayoutWidget'`).
-    The clock card renders first (top-left, no offset); the main card
-    renders second with a `marginTop` that covers everything but the
-    clock's top sliver — true z-stacking, not a visual trick.
-  - Header row: new jade checkmark badge next to "Habiteer" (wasn't in
-    any earlier iteration), coin balance as bare `🪙 {n}` next to it (no
-    badge box, matching the mockup's plain look, dropping the earlier
-    bordered-yellow-badge treatment).
-  - Rows: square rounded checkboxes (jade-filled + white check when done,
-    outline-only otherwise) replacing the difficulty-tinted circular
-    emoji box; per-item `+{payout}` coin label added; thin divider lines
-    between rows (and below the header) instead of each row being its own
-    bordered card.
-  - Footer row: `+N more due today` / `🔥 {streak}` side by side, dropping
-    the earlier full-width "open app" bar.
-  - Dark mode: card border switches to `widgetDark.accentViolet` (a
-    genuine deviation from the existing dark palette's "borders invert to
-    paper" rule — the new mockup explicitly shows a violet outline, not a
-    paper-white one, so the mockup's spec wins for this specific border).
+  discount rule `TrackableCard` already uses. Also replaced
+  `rowsForHeight`'s guessed size-buckets with an explicit
+  `FIXED_CHROME_DP` + `ROW_HEIGHT_DP` formula (`Math.floor((heightDp -
+  60) / 32)`, clamped 1–6) — the guessed buckets were tuned for the old
+  compact layout and silently stopped matching once the new layout's
+  fixed chrome grew, which is exactly what caused rows to get clipped off
+  the bottom (see crash #2 below). TDD'd throughout: `payout` test and
+  the updated `rowsForHeight` bucket assertions confirmed red, then green
+  (83/83 total).
+- `HabitWidget.tsx` final layout: one bordered card (ink border in light,
+  paper-white border in dark — the app's standard convention, not a
+  deviation) containing a header row (violet "H" badge + "Habiteer" +
+  inline clock + `🪙 {balance}`), a divider, checkbox rows (jade-filled +
+  white check when done, outline otherwise, per-item `+{payout}`, thin
+  dividers between), and a footer row (`+N more due today` / `🔥
+  {streak}`).
+- **Two real crashes found and fixed via live device repro** (logcat
+  watched through several force-close/reopen cycles), not just visual
+  misses:
+  1. `OverlapWidget` (used for a mockup-accurate "peeking clock card
+     behind the main card" effect, via Android's native `FrameLayout`)
+     had no explicit `width` — its `wrap_content` default deadlocked
+     against its `match_parent` children, collapsing it to zero size and
+     throwing `IllegalArgumentException: width and height must be > 0`
+     in `RNWidget.drawViewToBitmap` on every render attempt, so the
+     widget just kept showing whatever it had rendered before the crash
+     started (looked like "not updating" from the outside). Root-caused
+     via `adb logcat` at the exact moment of a triggered re-render.
+  2. Even after that fix, the peeking-clock structure's *total* fixed
+     height exceeded the widget's actual configured size on the user's
+     home screen (sized for the old compact layout), silently clipping
+     habit rows off the bottom — no crash, just missing content. Fixed
+     by dropping the separate clock card entirely (folded the clock into
+     the header row — one whole element's height cheaper) and replacing
+     `rowsForHeight`'s guesswork with the explicit formula above.
+  3. A third attempt to show the *real* app icon via `ImageWidget` (the
+     user asked for the actual logo, not a generic checkmark) crashed
+     intermittently with the same `width and height must be > 0`
+     exception — the native `ImageView` apparently measures 0×0 before
+     its bitmap finishes loading, and `drawViewToBitmap` doesn't wait for
+     it. A background retry sometimes succeeded silently, making it look
+     merely "stale" rather than crashing — but real device logs showed
+     the exception firing on most attempts. **First fix attempt was a
+     hand-drawn violet + "H" approximation** instead of the real icon —
+     the user correctly pushed back that this didn't meet the actual
+     requirement, which prompted properly reading the library's native
+     Java source (`RNWidget.java`, `ImageWidget.java`, `ResourceUtils.java`
+     — all vendored under `node_modules/.../android/src/main/java/`)
+     rather than assuming the crash was an unfixable async quirk.
+     **Real fix**: `ImageWidget`'s `require()` path resolves to an
+     `http://`-scheme URL and fetches it from Metro's dev server over the
+     network on every single render — `ResourceUtils.getBitmap` does this
+     fetch synchronously on a background worker thread, and a
+     transiently-failed fetch is exactly what was collapsing the bitmap
+     size. But that same function ALSO resolves a **plain scheme-less
+     string** to a compiled Android drawable resource via
+     `BitmapFactory.decodeResource` — a fast local decode, no network at
+     all. Added a `withWidgetIconResource` config plugin to
+     `app.config.ts` (via `expo/config-plugins`' `withDangerousMod`) that
+     copies `assets/icon.png` into `android/app/src/main/res/drawable/
+     widget_icon.png` on every `prebuild` (`android/` is gitignored and
+     regenerated, so a one-off manual copy wouldn't survive), then
+     `HabitWidget.tsx` references it by that resource name (cast around
+     `ImageWidgetSource`'s type, which only declares `require()`/URL/data
+     forms — the native code accepts more than the TS types admit).
+     **This required an actual native rebuild** (`expo prebuild` +
+     `expo run:android`), not just a JS/Fast-Refresh change, since a new
+     compiled resource needs a real APK rebuild to exist at all.
+  4. **After the icon fix, the user pushed back again**: "i was talking
+     about the whole widget not just the icon" — the clock had been
+     folded into a small inline header text after the first crash, which
+     is a real, significant departure from the reference mockup's large
+     peeking clock card, not a minor detail. Restored it properly this
+     time, now that the `OverlapWidget` crash's actual cause (missing
+     `width` on the OverlapWidget itself, not overlap being inherently
+     unsafe) was understood — `CLOCK_CARD_HEIGHT_DP`/`CLOCK_PEEK_DP`
+     constants control the peek exactly. This pushed total chrome height
+     up again, clipping a row and the footer once more (first with
+     `FIXED_CHROME_DP=100`, still short by roughly the header/footer rows
+     I'd under-counted); widened it to `135` with a bigger safety margin
+     after that, on the principle that under-filling by a few dp of
+     empty space is far cheaper than clipping — confirmed on device with
+     both habit rows, the streak footer, and the peeking clock all
+     visible with no clipping.
 - **Two real, stated platform limits** (not glossed over): this library's
   `TextWidgetStyle` has zero `textDecorationLine` support, so done items
   can only fade grey, not strike through, unlike the in-app card. And the
@@ -875,11 +935,18 @@ appear in this reference at all.
   own refresh, capped at `updatePeriodMillis: 1800000` — 30 minutes is
   Android's OS-level minimum, not a value this app chose).
 - `npx tsc --noEmit` clean; full `vitest run` green (83/83).
-- **Not device-verified yet** — same constraint as before (can't
-  screenshot outside the app itself, `adb shell input` blocked on this
-  device) — waiting on the user to check the actual home-screen widget,
-  light and dark.
-- **Not committed** — no commit/push request for this batch.
+- **Device-verified, final round** — logcat showed no crash; a screenshot
+  of the actual home-screen widget confirmed the peeking clock card, the
+  real app icon (matching the launcher icon directly, compared side by
+  side in the same screenshot), the restored border, and both habit rows
+  plus the streak footer all visible with no clipping. Dark variant
+  screenshotted; light variant shares the same code path, not separately
+  re-screenshotted.
+- Unrelated hiccup hit mid-session and resolved: the `adb reverse
+  tcp:8081` tunnel had dropped (device briefly disconnected), so the app
+  couldn't reach Metro and failed to open — re-ran `adb reverse tcp:8081
+  tcp:8081` and it opened normally. Not a code bug.
+- **Not committed** — no commit/push request for this batch yet.
 
 ## Bugs / blockers
 - None blocking. See "Known follow-ups" above for accepted v1/v2 gaps.

@@ -1,4 +1,32 @@
 import { ExpoConfig } from "expo/config";
+import { ConfigPlugin, withDangerousMod } from "expo/config-plugins";
+import * as fs from "fs";
+import * as path from "path";
+
+/**
+ * The widget's header mark needs the real app icon as an ImageWidget — but
+ * ImageWidget's require()-based path fetches over HTTP from Metro's dev
+ * server on every render, which crashed intermittently
+ * (`IllegalArgumentException: width and height must be > 0`, from a
+ * transiently-failed fetch collapsing the native ImageView's measured size).
+ * A plain Android drawable resource decodes synchronously with no network
+ * involved, so this copies the icon into res/drawable/ on every prebuild
+ * rather than relying on a one-off manual copy that `expo prebuild` would
+ * silently wipe (android/ is gitignored, regenerated each time).
+ */
+const withWidgetIconResource: ConfigPlugin = (config) =>
+  withDangerousMod(config, [
+    "android",
+    async (config) => {
+      const destDir = path.join(config.modRequest.platformProjectRoot, "app/src/main/res/drawable");
+      fs.mkdirSync(destDir, { recursive: true });
+      fs.copyFileSync(
+        path.join(config.modRequest.projectRoot, "assets/icon.png"),
+        path.join(destDir, "widget_icon.png")
+      );
+      return config;
+    },
+  ]);
 
 /**
  * Expo config. The Android home-screen widget (v2) is added here via the
@@ -55,6 +83,9 @@ const config: ExpoConfig = {
         ],
       },
     ],
+    // Expo CLI accepts an inline plugin function at runtime; ExpoConfig's own
+    // type only declares string/tuple entries, so this needs a cast.
+    withWidgetIconResource as unknown as string,
   ],
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,

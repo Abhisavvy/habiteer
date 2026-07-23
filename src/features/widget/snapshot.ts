@@ -78,10 +78,26 @@ export function capSnapshotRows(snapshot: WidgetSnapshot, maxRows: number): Widg
   };
 }
 
-/** Simple height-based lookup — no scrolling, so a bigger widget just shows more rows. */
+// HabitWidget.tsx's chrome that isn't a habit row: outer padding, the peeking
+// clock card (CLOCK_PEEK_DP — the main card's marginTop, since the clock card
+// itself sits behind and only its uncovered sliver adds real height), the main
+// card's own padding, the header row (icon + title + coins), the divider, and
+// the footer row — everything that costs height regardless of item count.
+// Kept as an explicit constant (not a guessed bucket) so a header/padding/
+// clock tweak can't silently make the real layout taller than this function
+// assumes — which is exactly what clipped rows off the widget twice already
+// (once with no clock, once after the clock came back with too tight a
+// margin). Padded well above the line-by-line sum (40 clock peek + 12 outer
+// padding + 16 card padding + 22 header row + 2 divider + 22 footer ≈ 114) —
+// text line-height and font metrics never come out exactly as guessed, and
+// under-filling by a few dp of empty space is far cheaper than clipping.
+const FIXED_CHROME_DP = 135;
+const ROW_HEIGHT_DP = 34;
+const MAX_ROWS_SHOWN = 6;
+
+/** No scrolling, so a bigger widget just shows more rows — sized to what
+ * HabitWidget.tsx's chrome + per-row height can actually fit without clipping. */
 export function rowsForHeight(heightDp: number): number {
-  if (heightDp < 110) return 1;
-  if (heightDp < 180) return 2;
-  if (heightDp < 250) return 3;
-  return 4;
+  const rows = Math.floor((heightDp - FIXED_CHROME_DP) / ROW_HEIGHT_DP);
+  return Math.max(1, Math.min(MAX_ROWS_SHOWN, rows));
 }
