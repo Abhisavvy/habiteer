@@ -204,3 +204,24 @@ alter table league_standings enable row level security;
 create policy "own league standings" on league_standings for all
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
+
+-- v2 Phase 11: cosmetics (PLAN.md §9 milestone cosmetics, §13 item 11).
+--
+-- Replaces the Phase 1 "own profile" policy (which had no WITH CHECK, so a
+-- client could set any avatar_color/title_id directly via PostgREST). The
+-- gate is enforced HERE, not in an RPC — an RPC would be bypassable while the
+-- table stayed open, exactly the mistake the trackables level-5 gate avoids
+-- by living in RLS. Levels never decrease (PLAN.md §7), and defaults are
+-- level-1 (violet/novice), so a display-name-only update — which re-validates
+-- the row's unchanged cosmetic values — always still passes. Unknown ids map
+-- to unlock level 9999 (constants.sql), so a tampered id fails the same gate.
+-- Placed at the end of this file so caller_level() and the *_unlock_level
+-- functions (constants.sql, applied first) already exist.
+drop policy if exists "own profile" on profiles;
+
+create policy "own profile" on profiles for all
+  using (id = auth.uid())
+  with check (
+    id = auth.uid()
+    and caller_level() >= avatar_color_unlock_level(avatar_color)
+    and caller_level() >= title_unlock_level(title_id)

@@ -16,6 +16,7 @@ import { useCompletionsQuery, useCoinBalanceQuery, useFreezeBalanceQuery } from 
 import { overallProgress } from "@/features/completions/derived";
 import { StreakFreezeExplainerModal } from "@/features/completions/components/StreakFreezeExplainerModal";
 import { longestStreakEver } from "@/features/gamification/streak";
+import { avatarColorFor, titleFor } from "@/features/cosmetics/catalog";
 
 const STREAK_EXPLAINER_SEEN_KEY = "streakFreezeExplainerSeen";
 
@@ -39,6 +40,8 @@ export default function Profile() {
   const fallbackName = email ? email.split("@")[0] : "You";
   const displayName = profile?.displayName ?? fallbackName;
   const initial = displayName.charAt(0).toUpperCase();
+  const avatarColor = avatarColorFor(profile?.avatarColor);
+  const equippedTitle = titleFor(profile?.titleId);
 
   const allCompletions = completions ?? [];
   const progress = overallProgress(allCompletions);
@@ -94,8 +97,8 @@ export default function Profile() {
         </View>
 
         <HardShadow style={styles.card}>
-          <HardShadow style={styles.avatar}>
-            <Text style={styles.avatarText}>{initial}</Text>
+          <HardShadow style={[styles.avatar, { backgroundColor: avatarColor.hex }]}>
+            <Text style={[styles.avatarText, { color: avatarColor.textColor }]}>{initial}</Text>
           </HardShadow>
           <View style={styles.identity}>
             {editing ? (
@@ -113,6 +116,7 @@ export default function Profile() {
                 {displayName}
               </Text>
             )}
+            {equippedTitle && <Text style={styles.equippedTitle}>{equippedTitle.label}</Text>}
             <Text style={styles.handle}>@{fallbackName}</Text>
             <View style={styles.lvlChip}>
               <Text style={styles.lvlChipText}>LVL {progress.level}</Text>
@@ -162,6 +166,11 @@ export default function Profile() {
           <Text style={styles.statsLinkArrow}>→</Text>
         </HardShadow>
 
+        <HardShadow style={styles.statsLink} onPress={() => router.push("/cosmetics")}>
+          <Text style={styles.statsLinkText}>🎨 Cosmetics</Text>
+          <Text style={styles.statsLinkArrow}>→</Text>
+        </HardShadow>
+
         <HardShadow style={styles.freezeRow} onPress={() => setFreezeExplainer(true)}>
           <Text style={styles.freezeEmoji}>❄️</Text>
           <View style={{ flex: 1 }}>
@@ -175,25 +184,21 @@ export default function Profile() {
           <View style={styles.settingRow}>
             <Text style={styles.settingIcon}>🔊</Text>
             <Text style={styles.settingLabel}>Sound effects</Text>
-            <ToggleSwitch on={soundOn} onPress={toggleSound} />
           </View>
           <View style={styles.settingRow}>
             <Text style={styles.settingIcon}>📳</Text>
             <Text style={styles.settingLabel}>Haptics</Text>
-            <ToggleSwitch on={hapticsOn} onPress={toggleHaptics} />
           </View>
           <View style={styles.settingRow}>
+            <Text style={styles.settingIcon}>🔔</Text>
+            <View style={{ flex: 1 }}>
             <Text style={styles.settingIcon}>🌙</Text>
             <Text style={styles.settingLabel}>
               Dark mode <Text style={styles.soonBadge}>SOON</Text>
             </Text>
             <ToggleSwitch on={false} onPress={() => {}} disabled />
           </View>
-          <View style={[styles.settingRow, styles.settingRowLast]}>
-            <Text style={styles.settingIcon}>🔔</Text>
             <Text style={styles.settingLabel}>Reminders</Text>
-            <Text style={styles.settingValue}>9:00 AM ›</Text>
-          </View>
         </HardShadow>
 
         <HardShadow style={styles.signOutBtn} onPress={() => setSignOutConfirm(true)}>
@@ -292,6 +297,7 @@ const styles = StyleSheet.create({
   avatarText: { fontWeight: "800", fontSize: 30, color: "#fff", fontFamily: fonts.display700 },
   identity: { flex: 1, minWidth: 0 },
   name: { fontWeight: "800", fontSize: 22, color: theme.color.ink, fontFamily: fonts.display700 },
+  equippedTitle: { fontWeight: "700", fontSize: 12, color: theme.color.violet, fontFamily: fonts.mono700, marginTop: 1 },
   nameInput: {
     fontWeight: "800",
     fontSize: 22,

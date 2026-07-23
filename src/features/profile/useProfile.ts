@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchProfile, updateDisplayName } from "./api";
+import { fetchProfile, updateDisplayName, equipCosmetic } from "./api";
 
 const PROFILE_KEY = ["profile"];
 
@@ -15,5 +15,13 @@ export function useUpdateDisplayName() {
       queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
       queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
     },
+  });
+}
+
+export function useEquipCosmetic() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kind, id }: { kind: "avatarColor" | "title" | "cardSkin"; id: string }) => equipCosmetic(kind, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PROFILE_KEY }),
   });
 }

@@ -25,12 +25,15 @@ import { LevelUpOverlay } from "@/features/completions/components/LevelUpOverlay
 import { UndoToast } from "@/features/completions/components/UndoToast";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { HardShadow } from "@/components/HardShadow";
+import { useProfileQuery } from "@/features/profile/useProfile";
+import { avatarColorFor, cardSkinFor } from "@/features/cosmetics/catalog";
 
 type PanelState = { mode: "add" } | { mode: "edit"; trackable: Trackable } | null;
 
 export default function Home() {
   const { data: trackables, isLoading, error } = useTrackablesQuery();
   const { data: completions } = useCompletionsQuery();
+  const { data: profile } = useProfileQuery();
   const { data: coinBalance } = useCoinBalanceQuery();
   const { data: freezeBalance } = useFreezeBalanceQuery();
   const createMutation = useCreateTrackable();
@@ -69,15 +72,12 @@ export default function Home() {
 
   const handleToggleComplete = (t: Trackable, isDoneToday: boolean, anchor: { x: number; y: number }) => {
     if (isDoneToday) {
-      undoMutation.mutate(t.id, {
-        onError: (e: Error) => Alert.alert("Couldn't undo that", e.message),
-      });
-      return;
-    }
     completeMutation.mutate(t.id, {
       onSuccess: (result) => {
         if (result.xp > 0) spawn(result.xp, anchor);
-        if (lastKnownLevel.current !== null && result.level.level > lastKnownLevel.current) {
+        const leveledUp = lastKnownLevel.current !== null && result.level.level > lastKnownLevel.current;
+        // Level-up gets its own celebratory cue; otherwise the completion cue.
+        if (leveledUp) {
           const freezeGained = Math.max(0, result.freezeTokens - (lastKnownFreeze.current ?? result.freezeTokens));
           setLevelUp({ level: result.level.level, freezeGained });
         }
@@ -105,8 +105,12 @@ export default function Home() {
           <View style={styles.freezeBadge}>
             <Text style={styles.freezeText}>❄️ {freezeBalance ?? 0}</Text>
           </View>
-          <Pressable style={styles.avatarBtn} onPress={() => router.navigate("/profile")} aria-label="Open profile">
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+          <Pressable
+            style={[styles.avatarBtn, { backgroundColor: avatarColorFor(profile?.avatarColor).hex }]}
+            onPress={() => router.navigate("/profile")}
+            aria-label="Open profile"
+          >
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={avatarColorFor(profile?.avatarColor).textColor} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
               <Circle cx="12" cy="8" r="4" />
               <Path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
             </Svg>

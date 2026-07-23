@@ -27,3 +27,23 @@ export const LEAGUE_TIERS = ["bronze", "silver", "gold", "platinum", "diamond"] 
 export type LeagueTier = (typeof LEAGUE_TIERS)[number];
 export const LEAGUE_PROMOTE_TOP = 3;
 export const LEAGUE_RELEGATE_BOTTOM = 3;
+
+/** Cosmetics (PLAN.md §9 milestone cosmetics). Only the id→unlock-level maps
+ * live here — they're the game rule, mirrored into SQL (gen-sql-constants.ts)
+ * and enforced by the profiles RLS gate. The visual details (hex, label) live
+ * in the client-only catalog (features/cosmetics/catalog.ts) so this file
+ * stays import-free for the Node SQL generator. Kept deliberately in sync:
+ * every id here must have a catalog entry. */
+export const AVATAR_COLOR_LEVELS: Record<string, number> = {
+  violet: 1, // default
+  jade: 2, // "Lv 2 custom colors" (PLAN.md §9)
+  fire: 5,
+  yellow: 10,
+  ink: 20,
+};
+export const TITLE_LEVELS: Record<string, number> = {
+  novice: 1, // default
+  builder: 5,
+  master: 10,
+  legend: 20,
+};

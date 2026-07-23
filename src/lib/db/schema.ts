@@ -3,7 +3,9 @@ import { pgTable, uuid, text, integer, timestamp, date, unique } from "drizzle-o
 export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey(), // == auth.users.id
   displayName: text("display_name").notNull(),
-  avatar: text("avatar").notNull(),
+  avatar: text("avatar").notNull(), // vestigial (set to '' at signup, never rendered — client draws initial-letter avatars)
+  avatarColor: text("avatar_color").notNull().default("violet"), // equipped cosmetic; RLS-gated by level
+  titleId: text("title_id").notNull().default("novice"), // equipped cosmetic; RLS-gated by level
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
-import { beforeAll, afterAll, beforeEach, describe, it, expect } from "vitest";
+import { beforeAll, afterAll, beforeEach, afterEach, describe, it, expect } from "vitest";
 import { comboMultiplier } from "@/features/gamification/combo";
 import { taskCoins } from "@/features/gamification/coins";
 import { weekStart, monthStart, prevPeriodStart, prevDay } from "@/features/gamification/dates";
@@ -26,6 +26,9 @@ import {
   seedLeagueStanding,
   cleanupLeagueStandings,
   makeCompetitor,
+  updateProfile,
+  getProfileCosmetics,
+  resetCosmetics,
 } from "./testClient";
 
 beforeAll(async () => {
@@ -791,6 +794,41 @@ describe("fn_sync_league", () => {
     }
   });
 });
+
+describe("cosmetics — profile equip gate", () => {
+  afterEach(async () => {
+    // Never leave the persistent account with a cosmetic above its level, or
+    // subsequent profile updates (incl. other tests) fail the WITH CHECK.
+    await resetCosmetics();
+  });
+
+  it("equips a cosmetic unlocked at or below the caller's level", async () => {
+    const seeded = await seedXp(9000); // comfortably past level 10
+    try {
+      const { error } = await updateProfile({ avatar_color: "yellow" }); // unlocks at level 10
+      expect(error).toBeNull();
+      expect((await getProfileCosmetics()).avatar_color).toBe("yellow");
+    } finally {
+      await resetCosmetics();
+      await seeded.cleanup();
+    }
+  });
+
+  it("rejects a cosmetic that needs a higher level than the caller has", async () => {
+    // The persistent test account is nowhere near level 20 without seeding.
+    const { error } = await updateProfile({ avatar_color: "ink" }); // unlocks at level 20
+    expect(error).not.toBeNull();
+  });
+
+  it("rejects an unknown cosmetic id", async () => {
+    const { error } = await updateProfile({ title_id: "definitely-not-real" });
+    expect(error).not.toBeNull();
+  });
+
+  it("still allows a display-name-only update with cosmetics untouched", async () => {
+    const { error } = await updateProfile({ display_name: "[TEST] cosmetics name" });
+    expect(error).toBeNull();
+  });
 
 describe("trackables — level 5 gate for week/month recurrence", () => {
   it("rejects creating a period='week' trackable below level 5", async () => {

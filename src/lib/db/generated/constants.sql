@@ -119,3 +119,35 @@ set search_path = public, pg_catalog
 as $$
   select 3;
 $$;
+
+create or replace function public.avatar_color_unlock_level(p_id text)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_id
+    when 'violet' then 1
+    when 'jade' then 2
+    when 'fire' then 5
+    when 'yellow' then 10
+    when 'ink' then 20
+    else 9999
+  end;
+$$;
+
+create or replace function public.title_unlock_level(p_id text)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_id
+    when 'novice' then 1
+    when 'builder' then 5
+    when 'master' then 10
+    when 'legend' then 20
+    else 9999
+  end;
+$$;
+

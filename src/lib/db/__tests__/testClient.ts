@@ -218,6 +218,38 @@ export async function cleanupLeagueStandings() {
   await testClient.from("league_standings").delete().eq("user_id", userData.user!.id);
 }
 
+/** Direct profiles update for the signed-in test user — the real client does
+ * exactly this to equip a cosmetic (no RPC; the gate is the profiles RLS
+ * WITH CHECK). Returns the raw Supabase response so tests can assert on error. */
+export async function updateProfile(patch: { avatar_color?: string; title_id?: string; card_skin?: string; display_name?: string }) {
+  const { data: userData } = await testClient.auth.getUser();
+  return testClient.from("profiles").update(patch).eq("id", userData.user!.id);
+}
+
+export async function getProfileCosmetics(): Promise<{ avatar_color: string; title_id: string; card_skin: string }> {
+  const { data: userData } = await testClient.auth.getUser();
+  const { data, error } = await testClient
+    .from("profiles")
+    .select("avatar_color, title_id, card_skin")
+    .eq("id", userData.user!.id)
+    .single();
+  if (error) throw error;
+  return data as { avatar_color: string; title_id: string; card_skin: string };
+}
+
+/** Best-effort reset to level-1 defaults — call after any cosmetics test so a
+ * seeded-then-cleaned-up high level never leaves the persistent account with a
+ * cosmetic its (restored) level no longer unlocks, which would then block all
+ * future profile updates via the WITH CHECK. Tolerant of the columns not yet
+ * existing (the TDD red phase). */
+export async function resetCosmetics() {
+  const { data: userData } = await testClient.auth.getUser();
+  await testClient
+    .from("profiles")
+    .update({ avatar_color: "violet", title_id: "novice", card_skin: "plain" })
+    .eq("id", userData.user!.id);
+}
+
 /** A second real account with one completion dated inside `week` earning
  * `xp` — for league promotion/relegation tests that need real competing
  * weekly totals (fn_sync_league ranks against every user's actual completions,
