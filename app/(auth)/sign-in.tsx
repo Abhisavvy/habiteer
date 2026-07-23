@@ -62,7 +62,7 @@ export default function SignIn() {
         <HardShadow style={styles.icon}>
           <Image source={require("../../assets/icon.png")} style={styles.iconImage} />
         </HardShadow>
-        <Text style={styles.wordmark}>Habiteer</Text>
+        <Text style={styles.wordmark}>HABITEER</Text>
         <Text style={styles.tagline}>Level up your day.</Text>
       </View>
 
@@ -115,11 +115,12 @@ export default function SignIn() {
           <View style={styles.dividerLine} />
         </View>
 
-        <Pressable style={styles.googleBtn} onPress={withGoogle}>
-          <Text style={styles.googleText}>
-            <Text style={styles.googleG}>G</Text> Continue with Google
-          </Text>
-        </Pressable>
+        <HardShadow style={styles.googleBtn} onPress={withGoogle}>
+          <View style={styles.googleBadge}>
+            <Text style={styles.googleG}>G</Text>
+          </View>
+          <Text style={styles.googleText}>Continue with Google</Text>
+        </HardShadow>
       </View>
     </View>
   );
@@ -142,8 +143,8 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   iconImage: { width: "100%", height: "100%" },
-  wordmark: { fontWeight: "800", fontSize: 34, color: theme.color.ink, letterSpacing: -1, marginTop: 14, fontFamily: fonts.display700 },
-  tagline: { fontWeight: "600", fontSize: 15, color: theme.color.violet, fontFamily: fonts.display600 },
+  wordmark: { fontSize: 36, color: theme.color.ink, letterSpacing: 0.5, marginTop: 12, fontFamily: fonts.heading },
+  tagline: { fontWeight: "600", fontSize: 14, color: theme.color.hero, fontFamily: fonts.display600 },
   formBlock: { gap: 14, paddingBottom: 26 },
   field: { gap: 6 },
   label: {
@@ -203,14 +204,31 @@ const styles = StyleSheet.create({
   dividerLine: { flex: 1, height: 2, backgroundColor: "rgba(26,21,35,0.15)" },
   dividerText: { fontWeight: "600", fontSize: 12, color: "rgba(26,21,35,0.45)", fontFamily: fonts.display600 },
   googleBtn: {
-    height: 48,
-    backgroundColor: "transparent",
+    height: 50,
+    flexDirection: "row",
+    gap: 10,
+    backgroundColor: theme.color.surface,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  googleBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#fff",
     borderWidth: 2,
-    borderColor: "rgba(26,21,35,0.3)",
-    borderRadius: 11,
+    borderColor: theme.color.ink,
     alignItems: "center",
     justifyContent: "center",
   },
-  googleText: { fontWeight: "600", fontSize: 14, color: "rgba(26,21,35,0.75)", fontFamily: fonts.display600 },
-  googleG: { fontWeight: "800", color: theme.color.violet },
+  googleText: { fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
+  googleG: { fontWeight: "800", fontSize: 14, color: theme.color.hero, fontFamily: fonts.display700 },
 });

@@ -1,11 +1,12 @@
 import { useCallback, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useAddAction } from "@/features/navigation/addAction";
 import { HardShadow } from "@/components/HardShadow";
+import { Halftone } from "@/components/Halftone";
 import { useCompletionsQuery } from "@/features/completions/useCompletions";
 import { overallProgress } from "@/features/completions/derived";
 import { useMyGroupsQuery, useCreateGroup, useJoinGroup } from "@/features/groups/useGroups";
@@ -19,6 +20,7 @@ export default function Groups() {
   const createMutation = useCreateGroup();
   const joinMutation = useJoinGroup();
   const [panelOpen, setPanelOpen] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
 
   const setAddHandler = useAddAction((s) => s.setHandler);
   useFocusEffect(
@@ -28,34 +30,61 @@ export default function Groups() {
     }, [setAddHandler])
   );
 
+  const submitJoin = () => {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) return;
+    joinMutation.mutate(code, {
+      onSuccess: () => setJoinCode(""),
+      onError: (e) => Alert.alert("Couldn't join that group", e.message),
+    });
+  };
+
   return (
     <View style={styles.root}>
+      <Halftone color={theme.color.ink} opacity={0.1} id="groups-bg" />
       <View style={styles.header}>
-        <Text style={styles.title}>Groups</Text>
+        <Text style={styles.title}>GROUPS</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {isLoading && <ActivityIndicator style={{ marginTop: 40 }} />}
         {error && <Text style={styles.error}>Couldn't load your groups. Pull to retry.</Text>}
 
-        {!isLoading && !error && groups?.length === 0 && !panelOpen && (
-          <View style={styles.empty}>
-            <View style={styles.emptyIcon}>
-              <Text style={styles.emptyIconText}>👥</Text>
-            </View>
-            <Text style={styles.emptyTitle}>No groups yet</Text>
-            <Text style={styles.emptyBody}>Join one with a code, or create your own.</Text>
-            <HardShadow style={styles.emptyBtn} onPress={() => setPanelOpen(true)}>
-              <Text style={styles.emptyBtnText}>＋ Join or create a group</Text>
-            </HardShadow>
+        {groups && groups.length > 0 && (
+          <View style={styles.list}>
+            {groups.map((g) => (
+              <GroupCard key={g.id} group={g} onPress={() => router.push(`/group/${g.id}`)} />
+            ))}
           </View>
         )}
 
-        <View style={styles.list}>
-          {groups?.map((g) => (
-            <GroupCard key={g.id} group={g} onPress={() => router.push(`/group/${g.id}`)} />
-          ))}
+        {!isLoading && !error && groups?.length === 0 && (
+          <Text style={styles.emptyNote}>No groups yet — join one with a code, or create your own.</Text>
+        )}
+
+        {/* Inline "Join a party" (mock 04) */}
+        <View style={styles.joinPanel}>
+          <Text style={styles.joinTitle}>JOIN A PARTY</Text>
+          <TextInput
+            style={styles.codeInput}
+            value={joinCode}
+            onChangeText={setJoinCode}
+            placeholder="ENTER CODE"
+            placeholderTextColor="rgba(36,27,51,0.5)"
+            autoCapitalize="characters"
+            autoCorrect={false}
+            returnKeyType="go"
+            onSubmitEditing={submitJoin}
+          />
+          <HardShadow style={styles.joinBtn} onPress={submitJoin} disabled={joinMutation.isPending} aria-label="Join group">
+            <Text style={styles.joinBtnText}>Join</Text>
+          </HardShadow>
         </View>
+
+        <Pressable style={styles.createBtn} onPress={() => setPanelOpen(true)} aria-label="Create a group">
+          <Text style={styles.createPlus}>+</Text>
+          <Text style={styles.createText}>Create a group</Text>
+        </Pressable>
 
         {panelOpen && (
           <CreateOrJoinPanel
@@ -82,57 +111,66 @@ export default function Groups() {
   );
 }
 
+const INK = theme.color.ink;
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.paper },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 54,
-    paddingBottom: 14,
-  },
-  title: { fontSize: 22, fontWeight: "800", color: theme.color.ink, fontFamily: fonts.display700 },
+  header: { paddingHorizontal: 16, paddingTop: 54, paddingBottom: 12 },
+  title: { fontSize: 26, color: INK, letterSpacing: 0.5, fontFamily: fonts.heading },
   scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
   list: { gap: 12 },
-  error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
-  empty: {
-    alignItems: "center",
-    gap: 9,
-    borderWidth: 3,
-    borderStyle: "dashed",
-    borderColor: "rgba(26,21,35,0.35)",
-    borderRadius: 12,
-    paddingVertical: 22,
-    paddingHorizontal: 16,
-  },
-  emptyIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 13,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
+  error: { textAlign: "center", marginTop: 40, color: INK, opacity: 0.7 },
+  emptyNote: { fontSize: 13, lineHeight: 19, color: INK, opacity: 0.6, textAlign: "center", marginTop: 8 },
+
+  joinPanel: {
     backgroundColor: "#EDE7FF",
+    borderWidth: theme.borders.standard,
+    borderColor: theme.color.hero,
+    borderRadius: 14,
+    padding: 14,
+    gap: 11,
+  },
+  joinTitle: { fontSize: 18, color: theme.color.hero, fontFamily: fonts.heading, letterSpacing: 0.5 },
+  codeInput: {
+    height: 46,
+    backgroundColor: "#fff",
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 11,
+    paddingHorizontal: 13,
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 2,
+    color: INK,
+    fontFamily: fonts.mono700,
+  },
+  joinBtn: {
+    height: 46,
     alignItems: "center",
     justifyContent: "center",
-  },
-  emptyIconText: { fontSize: 24 },
-  emptyTitle: { fontSize: 16, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.display700 },
-  emptyBody: { fontSize: 12.5, lineHeight: 19, color: theme.color.ink, opacity: 0.6, textAlign: "center" },
-  emptyBtn: {
-    marginTop: 4,
-    height: 42,
-    paddingHorizontal: 18,
-    justifyContent: "center",
-    backgroundColor: theme.color.violet,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 10,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 3, height: 3 },
+    backgroundColor: theme.color.hero,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 11,
+    shadowColor: INK,
+    shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 3,
+    elevation: 4,
   },
-  emptyBtnText: { color: "#fff", fontWeight: "700", fontSize: 14, fontFamily: fonts.display700 },
+  joinBtnText: { color: "#fff", fontWeight: "700", fontSize: 15, fontFamily: fonts.display700 },
+
+  createBtn: {
+    height: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: theme.color.hero,
+    borderRadius: 12,
+    backgroundColor: "transparent",
+  },
+  createPlus: { fontSize: 20, color: theme.color.hero, fontFamily: fonts.heading },
+  createText: { fontSize: 14, fontWeight: "700", color: theme.color.hero, fontFamily: fonts.display700 },
 });

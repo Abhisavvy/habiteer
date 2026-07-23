@@ -1,15 +1,21 @@
 import { View, Text, StyleSheet } from "react-native";
-import { Users, ChevronRight } from "lucide-react-native";
+import { Users } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import type { Group } from "../api";
 
+/**
+ * Group list card (P2 "04 Groups" mock shape). The mock shows a per-group emoji
+ * tile + "🔥14 · 3 members"; the list query only carries {name, inviteCode}
+ * today (streak/member-count live on GroupDetail), so the subtitle shows the
+ * invite code — extending the list query is a separate follow-up.
+ */
 export function GroupCard({ group, onPress }: { group: Group; onPress: () => void }) {
   return (
     <HardShadow style={styles.card} onPress={onPress}>
       <View style={styles.iconBox}>
-        <Users size={20} strokeWidth={2.5} color={theme.color.violet} />
+        <Users size={22} strokeWidth={2.6} color="#fff" />
       </View>
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>
@@ -17,38 +23,41 @@ export function GroupCard({ group, onPress }: { group: Group; onPress: () => voi
         </Text>
         <Text style={styles.code}>Code · {group.inviteCode}</Text>
       </View>
-      <ChevronRight size={18} strokeWidth={2.5} color={theme.color.ink} style={{ opacity: 0.4 }} />
+      <Text style={styles.chevron}>›</Text>
     </HardShadow>
   );
 }
 
+const INK = theme.color.ink;
 const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    backgroundColor: theme.color.card,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: theme.radius,
-    padding: 13,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 5, height: 5 },
+    gap: 11,
+    backgroundColor: theme.color.surface,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 14,
+    padding: 12,
+    shadowColor: INK,
+    shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 5,
+    elevation: 4,
   },
   iconBox: {
-    width: 46,
-    height: 46,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
+    width: 48,
+    height: 48,
+    flexShrink: 0,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EDE7FF",
+    backgroundColor: theme.color.ember,
   },
   body: { flex: 1, minWidth: 0 },
-  name: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display700 },
-  code: { fontSize: 12, fontWeight: "700", color: "rgba(26,21,35,0.55)", marginTop: 2, fontFamily: fonts.mono700 },
+  name: { fontWeight: "700", fontSize: 15, color: INK, fontFamily: fonts.display700 },
+  code: { fontSize: 11, fontWeight: "700", color: theme.color.ember, marginTop: 2, fontFamily: fonts.mono700 },
+  chevron: { fontSize: 18, fontWeight: "700", color: INK, fontFamily: fonts.display700 },
 });

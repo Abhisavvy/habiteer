@@ -92,6 +92,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  text: { flex: 1, color: theme.color.paper, fontWeight: "600", fontSize: 14, fontFamily: fonts.display600 },
-  undo: { color: theme.color.yellow, fontWeight: "700", fontSize: 13, fontFamily: fonts.mono700 },
+  text: { flex: 1, color: theme.color.paper, fontWeight: "700", fontSize: 13, fontFamily: fonts.display700 },
+  undo: { color: theme.color.gold, fontSize: 15, fontFamily: fonts.heading, letterSpacing: 0.5 },
 });

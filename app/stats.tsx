@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from "react-nat
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
+import { Halftone } from "@/components/Halftone";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useTrackablesQuery } from "@/features/trackables/useTrackables";
@@ -27,12 +28,13 @@ export default function Stats() {
 
   return (
     <View style={styles.root}>
+      <Halftone color={theme.color.ink} opacity={0.1} id="stats-bg" />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.headerRow}>
           <HardShadow style={styles.backBtn} onPress={() => router.back()} aria-label="Back">
             <ArrowLeft size={18} strokeWidth={2.5} color={theme.color.ink} />
           </HardShadow>
-          <Text style={styles.title}>Stats</Text>
+          <Text style={styles.title}>STATS</Text>
         </View>
 
         {isLoading ? (
@@ -40,42 +42,38 @@ export default function Stats() {
         ) : (
           <>
             <View style={styles.recordsRow}>
-              <HardShadow style={styles.recordHero}>
-                {best ? (
-                  <>
-                    <Text style={styles.recordHeroEmoji}>{best.emoji}</Text>
-                    <Text style={styles.recordHeroValue}>{best.streak} 🔥</Text>
-                    <Text style={styles.recordHeroLabel} numberOfLines={1}>
-                      {best.name}
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={styles.recordHeroEmpty}>No streaks yet — complete a habit to start one.</Text>
-                )}
+              <HardShadow style={[styles.recordCard, { backgroundColor: theme.color.ember }]}>
+                <Text style={styles.recordValue}>🔥 {best?.streak ?? 0}</Text>
+                <Text style={styles.recordLabel} numberOfLines={1}>
+                  {best ? `Record · ${best.name}` : "Record streak"}
+                </Text>
               </HardShadow>
-              <View style={styles.recordCol}>
-                <HardShadow style={styles.recordCell}>
-                  <Text style={styles.recordValue}>🪙 {totalCoinsEarned.toLocaleString()}</Text>
-                  <Text style={styles.recordLabel}>Coins earned all-time</Text>
-                </HardShadow>
-                <HardShadow style={styles.recordCell}>
-                  <Text style={[styles.recordValue, { color: theme.color.jade }]}>{allCompletions.length}</Text>
-                  <Text style={styles.recordLabel}>Habits &amp; tasks done</Text>
-                </HardShadow>
-              </View>
+              <HardShadow style={[styles.recordCard, { backgroundColor: theme.color.success }]}>
+                <Text style={styles.recordValue}>🪙 {totalCoinsEarned.toLocaleString()}</Text>
+                <Text style={styles.recordLabel}>Coins earned</Text>
+              </HardShadow>
             </View>
 
-            <Text style={styles.sectionLabel}>Coins earned — last 8 weeks</Text>
             <HardShadow style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Coins earned · last 8 weeks</Text>
               <View style={styles.chartBars}>
-                {weeks.map((w) => (
-                  <View key={w.weekStart} style={styles.chartBarCol}>
-                    <View style={styles.chartBarTrack}>
-                      <View style={[styles.chartBarFill, { height: `${Math.max(4, (w.coins / maxWeekCoins) * 100)}%` }]} />
+                {weeks.map((w) => {
+                  const isPeak = w.coins === maxWeekCoins && w.coins > 0;
+                  return (
+                    <View key={w.weekStart} style={styles.chartBarCol}>
+                      <View style={styles.chartBarTrack}>
+                        <View
+                          style={[
+                            styles.chartBarFill,
+                            { height: `${Math.max(4, (w.coins / maxWeekCoins) * 100)}%` },
+                            { backgroundColor: isPeak ? theme.color.gold : theme.color.hero },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.chartBarLabel}>{weekLabel(w.weekStart)}</Text>
                     </View>
-                    <Text style={styles.chartBarLabel}>{weekLabel(w.weekStart)}</Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </HardShadow>
 
@@ -90,24 +88,29 @@ export default function Stats() {
                   t.quota,
                   todayStr
                 );
+                const rate =
+                  stats.completionRate !== undefined
+                    ? stats.completionRate
+                    : period.quota > 0
+                      ? Math.min(1, period.completed / period.quota)
+                      : 0;
+                const pct = Math.round(rate * 100);
+                const rateColor = rate >= 0.75 ? theme.color.success : rate >= 0.4 ? theme.color.gold : theme.color.ember;
                 return (
-                  <HardShadow key={t.id} style={styles.habitRow}>
-                    <Text style={styles.habitEmoji}>{t.emoji}</Text>
-                    <View style={styles.habitBody}>
+                  <View key={t.id} style={styles.habitRow}>
+                    <View style={styles.habitTop}>
                       <Text style={styles.habitName} numberOfLines={1}>
-                        {t.name}
+                        {t.emoji} {t.name}
                       </Text>
-                      <Text style={styles.habitMeta}>
-                        🔥 {stats.currentStreak} now · {stats.longestStreak} best
-                        {stats.completionRate !== undefined
-                          ? ` · ${Math.round(stats.completionRate * 100)}% done`
-                          : t.period !== "day"
-                            ? ` · ${period.completed}/${period.quota} this ${t.period}`
-                            : ""}
-                      </Text>
+                      <Text style={[styles.habitPct, { color: rateColor }]}>{pct}%</Text>
                     </View>
-                    <Text style={styles.habitCoins}>🪙 {stats.coinsEarned}</Text>
-                  </HardShadow>
+                    <View style={styles.habitTrack}>
+                      <View style={[styles.habitFill, { width: `${Math.max(3, pct)}%`, backgroundColor: rateColor }]} />
+                    </View>
+                    <Text style={styles.habitMeta}>
+                      🔥 {stats.currentStreak} now · {stats.longestStreak} best · 🪙 {stats.coinsEarned}
+                    </Text>
+                  </View>
                 );
               })}
             </View>
@@ -124,108 +127,93 @@ function weekLabel(weekStart: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+const INK = theme.color.ink;
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.paper },
-  scroll: { paddingHorizontal: 16, paddingTop: 54, paddingBottom: 40, gap: 15 },
+  scroll: { paddingHorizontal: 16, paddingTop: 50, paddingBottom: 40, gap: 14 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   backBtn: {
     width: 36,
     height: 36,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    backgroundColor: "#fff",
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    backgroundColor: theme.color.surface,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: theme.color.ink,
+    shadowColor: INK,
     shadowOffset: { width: 2, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 2,
   },
-  title: { fontWeight: "800", fontSize: 22, color: theme.color.ink, fontFamily: fonts.display700 },
-  recordsRow: { flexDirection: "row", gap: 11 },
-  recordHero: {
+  title: { fontSize: 24, color: INK, fontFamily: fonts.heading, letterSpacing: 0.5 },
+
+  recordsRow: { flexDirection: "row", gap: 9 },
+  recordCard: {
     flex: 1,
-    backgroundColor: theme.color.violet,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: theme.radius,
-    padding: 15,
-    justifyContent: "center",
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 5, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 5,
-  },
-  recordHeroEmoji: { fontSize: 30 },
-  recordHeroValue: { fontWeight: "800", fontSize: 22, color: "#fff", fontFamily: fonts.mono700, marginTop: 4 },
-  recordHeroLabel: { fontWeight: "600", fontSize: 12, color: "rgba(255,255,255,0.85)", fontFamily: fonts.display600, marginTop: 2 },
-  recordHeroEmpty: { fontSize: 12.5, lineHeight: 18, color: "#fff", fontFamily: fonts.display600 },
-  recordCol: { gap: 11, width: "42%" },
-  recordCell: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 13,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 12,
     padding: 11,
-    justifyContent: "center",
-    shadowColor: theme.color.ink,
+    shadowColor: INK,
     shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 3,
   },
-  recordValue: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.mono700 },
-  recordLabel: { fontWeight: "600", fontSize: 10, color: "rgba(26,21,35,0.6)", fontFamily: fonts.display600, marginTop: 2 },
-  sectionLabel: {
-    fontWeight: "700",
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: "rgba(26,21,35,0.5)",
-    fontFamily: fonts.mono700,
-    marginTop: -4,
-  },
+  recordValue: { fontWeight: "700", fontSize: 22, color: "#fff", fontFamily: fonts.mono700 },
+  recordLabel: { fontWeight: "700", fontSize: 10, color: "rgba(255,255,255,0.9)", fontFamily: fonts.display700, marginTop: 2 },
+
   chartCard: {
-    backgroundColor: "#fff",
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 13,
-    padding: 14,
-    shadowColor: theme.color.ink,
+    backgroundColor: theme.color.surface,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 14,
+    padding: 13,
+    shadowColor: INK,
     shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 4,
   },
+  chartTitle: { fontWeight: "700", fontSize: 12, color: INK, fontFamily: fonts.display700, marginBottom: 12 },
   chartBars: { flexDirection: "row", alignItems: "flex-end", height: 110, gap: 6 },
   chartBarCol: { flex: 1, alignItems: "center", gap: 5, height: "100%", justifyContent: "flex-end" },
   chartBarTrack: { flex: 1, width: "100%", justifyContent: "flex-end" },
-  chartBarFill: { width: "100%", backgroundColor: theme.color.jade, borderRadius: 4, borderWidth: 2, borderColor: theme.color.ink },
-  chartBarLabel: { fontSize: 8.5, color: "rgba(26,21,35,0.55)", fontFamily: fonts.mono700 },
-  emptyBody: { fontSize: 12.5, color: "rgba(26,21,35,0.6)", fontFamily: fonts.display600 },
-  habitList: { gap: 10 },
-  habitRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#fff",
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 13,
-    padding: 12,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 3, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 3,
+  chartBarFill: { width: "100%", borderTopLeftRadius: 5, borderTopRightRadius: 5, borderWidth: 2, borderColor: INK },
+  chartBarLabel: { fontSize: 8.5, fontWeight: "700", color: "rgba(36,27,51,0.5)", fontFamily: fonts.mono700 },
+
+  sectionLabel: {
+    fontWeight: "700",
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: "rgba(36,27,51,0.6)",
+    fontFamily: fonts.mono700,
   },
-  habitEmoji: { fontSize: 24 },
-  habitBody: { flex: 1, minWidth: 0 },
-  habitName: { fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
-  habitMeta: { fontSize: 11, color: "rgba(26,21,35,0.6)", fontFamily: fonts.mono700, marginTop: 2 },
-  habitCoins: { fontWeight: "700", fontSize: 13, color: theme.color.ink, fontFamily: fonts.mono700 },
+  emptyBody: { fontSize: 12.5, color: "rgba(36,27,51,0.6)", fontFamily: fonts.display600 },
+  habitList: { gap: 8 },
+  habitRow: {
+    backgroundColor: theme.color.surface,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 11,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    gap: 5,
+  },
+  habitTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  habitName: { flex: 1, fontWeight: "700", fontSize: 13, color: INK, fontFamily: fonts.display700 },
+  habitPct: { fontWeight: "700", fontSize: 11, fontFamily: fonts.mono700 },
+  habitTrack: {
+    height: 9,
+    backgroundColor: "#fff",
+    borderWidth: theme.borders.hairline,
+    borderColor: INK,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  habitFill: { height: "100%" },
+  habitMeta: { fontSize: 10.5, fontWeight: "700", color: "rgba(36,27,51,0.55)", fontFamily: fonts.mono700 },
 });

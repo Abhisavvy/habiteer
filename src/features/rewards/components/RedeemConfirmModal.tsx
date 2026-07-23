@@ -41,6 +41,6 @@ export function RedeemConfirmModal({
 
 const styles = StyleSheet.create({
   costRow: { flexDirection: "row", gap: 14, marginVertical: 4 },
-  costDelta: { fontWeight: "700", fontSize: 13, color: theme.color.violet, fontFamily: fonts.mono700 },
-  costLeft: { fontWeight: "700", fontSize: 13, color: "rgba(26,21,35,0.55)", fontFamily: fonts.mono700 },
+  costDelta: { fontWeight: "700", fontSize: 13, color: theme.color.ember, fontFamily: fonts.mono700 },
+  costLeft: { fontWeight: "700", fontSize: 13, color: "rgba(36,27,51,0.55)", fontFamily: fonts.mono700 },
 });

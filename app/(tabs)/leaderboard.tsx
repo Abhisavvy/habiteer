@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Share } from "react-native";
 import { router } from "expo-router";
 import { HardShadow } from "@/components/HardShadow";
+import { Halftone } from "@/components/Halftone";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/features/auth/useAuth";
@@ -9,14 +10,12 @@ import { weekStart, type ISODate } from "@/features/gamification/dates";
 import { LEAGUE_PROMOTE_TOP, LEAGUE_RELEGATE_BOTTOM, type LeagueTier } from "@/features/gamification/constants";
 import { avatarColorFor, titleFor } from "@/features/cosmetics/catalog";
 
-const MEDALS = ["🥇", "🥈", "🥉"];
-
 const TIER_COLORS: Record<LeagueTier, string> = {
   bronze: "#C58E4A",
   silver: "#AEB4C0",
-  gold: theme.color.yellow,
+  gold: theme.color.gold,
   platinum: "#8FD9D0",
-  diamond: theme.color.violet,
+  diamond: theme.color.hero,
 };
 const TIER_TEXT_COLOR: Record<LeagueTier, string> = {
   bronze: "#fff",
@@ -25,8 +24,16 @@ const TIER_TEXT_COLOR: Record<LeagueTier, string> = {
   platinum: theme.color.ink,
   diamond: "#fff",
 };
+const TIER_MEDAL: Record<LeagueTier, string> = {
+  bronze: "🥉",
+  silver: "🥈",
+  gold: "🥇",
+  platinum: "🏆",
+  diamond: "💎",
+};
 
-function resetCountdownLabel(): string {
+/** Time left until the weekly reset, as a compact "3d 4h". */
+function timeLeftLabel(): string {
   const now = new Date();
   const todayIso = now.toISOString().slice(0, 10) as ISODate;
   const thisWeekStart = new Date(`${weekStart(todayIso)}T00:00:00Z`);
@@ -34,7 +41,7 @@ function resetCountdownLabel(): string {
   const msLeft = Math.max(0, nextReset.getTime() - now.getTime());
   const days = Math.floor(msLeft / (24 * 60 * 60 * 1000));
   const hours = Math.floor((msLeft % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-  return `resets ${days}d ${hours}h`;
+  return `${days}d ${hours}h`;
 }
 
 export default function Leaderboard() {
@@ -43,134 +50,103 @@ export default function Leaderboard() {
   const { data: myTier } = useMyLeagueQuery();
   useSyncLeagueOnMount();
 
+  const tier: LeagueTier = myTier ?? "bronze";
   const activeCount = rows?.filter((r) => r.weeklyXp > 0).length ?? 0;
   const relegateZoneStart = Math.max(activeCount - LEAGUE_RELEGATE_BOTTOM, LEAGUE_RELEGATE_BOTTOM);
+  const showZones = activeCount > relegateZoneStart;
+
+  // Walk the ranked rows once, emitting zone labels as we cross into them.
+  const rowEls: React.ReactNode[] = [];
+  let emittedRelegateLabel = false;
+  (rows ?? []).forEach((row, i) => {
+    const rank = i + 1;
+    const isYou = row.id === userId;
+    const isPromote = showZones && row.weeklyXp > 0 && rank <= LEAGUE_PROMOTE_TOP;
+    const isRelegate = showZones && row.weeklyXp > 0 && rank > relegateZoneStart && rank <= activeCount;
+    if (i === 0 && showZones) {
+      rowEls.push(
+        <Text key="promo-label" style={[styles.zoneLabel, { color: theme.color.success }]}>
+          ⬆ Promotion zone
+        </Text>
+      );
+    }
+    if (isRelegate && !emittedRelegateLabel) {
+      emittedRelegateLabel = true;
+      rowEls.push(
+        <Text key="releg-label" style={[styles.zoneLabel, { color: theme.color.danger }]}>
+          ⬇ Relegation zone
+        </Text>
+      );
+    }
+
+    const swatch = avatarColorFor(row.avatarColor);
+    const initial = (isYou ? "You" : row.displayName).charAt(0).toUpperCase();
+    const equippedTitle = row.titleId !== "novice" ? titleFor(row.titleId) : null;
+    const elevated = isPromote || isYou; // mock: promotion rows + you carry the hard shadow
+    const Wrap = elevated ? HardShadow : View;
+
+    rowEls.push(
+      <Wrap
+        key={row.id}
+        style={[
+          styles.rankRow,
+          elevated && styles.rankRowElevated,
+          isYou && styles.youRow,
+          isRelegate && styles.relegateRow,
+        ]}
+      >
+        <Text style={[styles.rank, isYou && styles.youInk]}>{rank}</Text>
+        <View style={[styles.avatar, { backgroundColor: swatch.hex }]}>
+          <Text style={[styles.avatarText, { color: swatch.textColor }]}>{initial}</Text>
+        </View>
+        <View style={styles.identity}>
+          <Text style={[styles.name, isYou && styles.youInk]} numberOfLines={1}>
+            {isYou ? "You" : row.displayName}
+          </Text>
+          {equippedTitle && (
+            <Text style={[styles.rowTitle, isYou && styles.youTitle]} numberOfLines={1}>
+              {equippedTitle.label}
+            </Text>
+          )}
+        </View>
+        {isRelegate && <Text style={styles.relegateTag}>↓</Text>}
+        <Text style={[styles.score, isYou && styles.youInk]}>{row.weeklyXp.toLocaleString()}</Text>
+      </Wrap>
+    );
+  });
 
   return (
     <View style={styles.root}>
+      <Halftone color={theme.color.ink} opacity={0.1} id="board-bg" />
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.title}>This week</Text>
-          {myTier && (
-            <HardShadow style={[styles.tierBadge, { backgroundColor: TIER_COLORS[myTier] }]}>
-              <Text style={[styles.tierBadgeText, { color: TIER_TEXT_COLOR[myTier] }]}>{myTier.toUpperCase()}</Text>
-            </HardShadow>
-          )}
-        </View>
-        <Text style={styles.resetBadge}>{resetCountdownLabel()}</Text>
+        <Text style={styles.title}>LEAGUE</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {isLoading && <ActivityIndicator style={{ marginTop: 40 }} />}
         {error && <Text style={styles.error}>Couldn't load the leaderboard. Pull to retry.</Text>}
 
-        <HardShadow style={styles.questsLink} onPress={() => router.push("/quests")} aria-label="Open weekly quests">
-          <Text style={styles.questsLinkText}>🎯 Weekly quests</Text>
-          <Text style={styles.questsLinkArrow}>→</Text>
+        {/* League banner (mock 03) — hero-violet with a white halftone "sun" */}
+        <HardShadow style={styles.banner}>
+          <Halftone color="#FFFFFF" opacity={0.45} id="league-sun" />
+          <View style={[styles.bannerMedal, { backgroundColor: TIER_COLORS[tier] }]}>
+            <Text style={styles.bannerMedalEmoji}>{TIER_MEDAL[tier]}</Text>
+          </View>
+          <View style={styles.bannerBody}>
+            <Text style={styles.bannerTier}>{tier.toUpperCase()} LEAGUE</Text>
+            <Text style={styles.bannerSub}>
+              {timeLeftLabel()} left · top {LEAGUE_PROMOTE_TOP} promote
+            </Text>
+          </View>
         </HardShadow>
 
-        {activeCount > relegateZoneStart && (
-          <Text style={styles.zoneHint}>
-            Top {LEAGUE_PROMOTE_TOP} promote next week · bottom {activeCount - relegateZoneStart} relegate
-          </Text>
-        )}
-
-        <View style={styles.list}>
-          {rows?.map((row, i) => {
-            const rank = i + 1;
-            const isYou = row.id === userId;
-            const isTop3 = rank <= 3;
-            const isRelegateZone = row.weeklyXp > 0 && rank > relegateZoneStart && rank <= activeCount;
-            const initial = (isYou ? "You" : row.displayName).charAt(0).toUpperCase();
-            // Each row's avatar shows that player's own equipped color (the cosmetic
-            // "flex"); a non-default equipped title shows as a caption under the name.
-            const swatch = avatarColorFor(row.avatarColor);
-            const equippedTitle = row.titleId !== "novice" ? titleFor(row.titleId) : null;
-
-            if (isTop3) {
-              const fill = isYou ? theme.color.violet : rank === 1 ? theme.color.yellow : theme.color.card;
-              const textColor = isYou ? "#fff" : theme.color.ink;
-              return (
-                <HardShadow
-                  key={row.id}
-                  style={[
-                    styles.topRow,
-                    rank === 1 ? styles.topRowFirst : styles.topRowRest,
-                    { backgroundColor: fill },
-                  ]}
-                >
-                  <Text style={rank === 1 ? styles.medalFirst : styles.medalRest}>{MEDALS[rank - 1]}</Text>
-                  <View style={[rank === 1 ? styles.avatarFirst : styles.avatarRest, { backgroundColor: swatch.hex }]}>
-                    <Text style={[rank === 1 ? styles.avatarTextFirst : styles.avatarTextRest, { color: swatch.textColor }]}>{initial}</Text>
-                  </View>
-                  <View style={styles.identityCol}>
-                    <Text style={[rank === 1 ? styles.nameFirst : styles.nameRest, { color: textColor }]} numberOfLines={1}>
-                      {isYou ? "You" : row.displayName}
-                    </Text>
-                    {equippedTitle && (
-                      <Text style={[styles.rowTitle, { color: rank === 1 || isYou ? "rgba(255,255,255,0.85)" : "rgba(26,21,35,0.55)" }]} numberOfLines={1}>
-                        {equippedTitle.label}
-                      </Text>
-                    )}
-                  </View>
-                  <Text style={[rank === 1 ? styles.scoreFirst : styles.scoreRest, { color: textColor }]}>
-                    {row.weeklyXp.toLocaleString()}
-                  </Text>
-                </HardShadow>
-              );
-            }
-
-            if (isYou) {
-              return (
-                <HardShadow key={row.id} style={[styles.youRow, isRelegateZone && styles.relegateBorder]}>
-                  <Text style={styles.youRank}>{rank}</Text>
-                  <View style={[styles.youAvatar, { backgroundColor: swatch.hex }]}>
-                    <Text style={[styles.youAvatarText, { color: swatch.textColor }]}>{initial}</Text>
-                  </View>
-                  <View style={styles.identityCol}>
-                    <Text style={styles.youName} numberOfLines={1}>
-                      You
-                    </Text>
-                    {equippedTitle && (
-                      <Text style={[styles.rowTitle, { color: "rgba(255,255,255,0.85)" }]} numberOfLines={1}>
-                        {equippedTitle.label}
-                      </Text>
-                    )}
-                  </View>
-                  {isRelegateZone && <Text style={styles.relegateTag}>↓</Text>}
-                  <Text style={styles.youScore}>{row.weeklyXp.toLocaleString()}</Text>
-                </HardShadow>
-              );
-            }
-
-            return (
-              <View key={row.id} style={[styles.plainRow, isRelegateZone && styles.relegateBorder]}>
-                <Text style={styles.plainRank}>{rank}</Text>
-                <View style={[styles.plainAvatar, { backgroundColor: swatch.hex }]}>
-                  <Text style={[styles.plainAvatarText, { color: swatch.textColor }]}>{initial}</Text>
-                </View>
-                <View style={styles.identityCol}>
-                  <Text style={styles.plainName} numberOfLines={1}>
-                    {row.displayName}
-                  </Text>
-                  {equippedTitle && (
-                    <Text style={[styles.rowTitle, { color: "rgba(26,21,35,0.55)" }]} numberOfLines={1}>
-                      {equippedTitle.label}
-                    </Text>
-                  )}
-                </View>
-                {isRelegateZone && <Text style={styles.relegateTag}>↓</Text>}
-                <Text style={styles.plainScore}>{row.weeklyXp.toLocaleString()}</Text>
-              </View>
-            );
-          })}
-        </View>
+        <View style={styles.list}>{rowEls}</View>
 
         {rows && rows.length === 0 && (
           <Text style={styles.note}>No one's earned XP this week yet — be the first.</Text>
         )}
 
-        {rows && rows.length > 0 && rows.length < 10 ? (
+        {rows && rows.length > 0 && rows.length < 10 && (
           <View style={styles.lowPop}>
             <Text style={styles.lowPopEmoji}>🌱</Text>
             <Text style={styles.lowPopTitle}>
@@ -184,164 +160,145 @@ export default function Leaderboard() {
               <Text style={styles.lowPopBtnText}>＋ Invite friends</Text>
             </HardShadow>
           </View>
-        ) : (
-          <Text style={styles.note}>Finish habits today to climb. Ranks reset every week.</Text>
         )}
+
+        <HardShadow style={styles.questsLink} onPress={() => router.push("/quests")} aria-label="Open weekly quests">
+          <Text style={styles.questsEmoji}>🎯</Text>
+          <Text style={styles.questsLinkText}>Weekly quests</Text>
+          <Text style={styles.questsLinkArrow}>›</Text>
+        </HardShadow>
       </ScrollView>
     </View>
   );
 }
 
+const INK = theme.color.ink;
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.paper },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 54,
-    paddingBottom: 14,
-  },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  title: { fontSize: 22, fontWeight: "800", color: theme.color.ink, fontFamily: fonts.display700 },
-  tierBadge: {
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  tierBadgeText: { fontWeight: "700", fontSize: 11, fontFamily: fonts.mono700, letterSpacing: 0.5 },
-  zoneHint: { fontSize: 11, fontWeight: "600", color: "rgba(26,21,35,0.5)", fontFamily: fonts.mono700, marginTop: -6 },
-  relegateBorder: { borderColor: theme.color.fire, borderBottomColor: theme.color.fire },
-  relegateTag: { fontWeight: "700", fontSize: 13, color: theme.color.fire, marginRight: 2 },
-  identityCol: { flex: 1, minWidth: 0 },
-  rowTitle: { fontSize: 10, fontWeight: "700", fontFamily: fonts.mono700, marginTop: 1 },
-  resetBadge: {
-    fontWeight: "700",
-    fontSize: 12,
-    color: theme.color.fire,
-    backgroundColor: "#FFDBD1",
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontFamily: fonts.mono700,
-  },
-  scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
-  questsLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: theme.color.yellow,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: theme.radius,
-    paddingHorizontal: 15,
-    paddingVertical: 13,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
-  },
-  questsLinkText: { fontWeight: "800", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
-  questsLinkArrow: { fontWeight: "800", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display700 },
-  list: { gap: 10 },
+  header: { paddingHorizontal: 16, paddingTop: 54, paddingBottom: 12 },
+  title: { fontSize: 26, color: INK, letterSpacing: 0.5, fontFamily: fonts.heading },
+  scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 12 },
 
-  topRow: { flexDirection: "row", alignItems: "center", gap: 12, borderWidth: theme.border, borderColor: theme.color.ink, borderRadius: 13 },
-  topRowFirst: {
-    padding: 14,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 5, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 5,
-  },
-  topRowRest: {
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: theme.color.hero,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 14,
     padding: 12,
-    shadowColor: theme.color.ink,
+    overflow: "hidden",
+    shadowColor: INK,
     shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 4,
   },
-  medalFirst: { fontSize: 26 },
-  medalRest: { fontSize: 23 },
-  avatarFirst: { width: 40, height: 40, borderRadius: 20, borderWidth: theme.border, borderColor: theme.color.ink, alignItems: "center", justifyContent: "center" },
-  avatarRest: { width: 36, height: 36, borderRadius: 18, borderWidth: theme.border, borderColor: theme.color.ink, alignItems: "center", justifyContent: "center" },
-  avatarTextFirst: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display700 },
-  avatarTextRest: { fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
-  nameFirst: { flex: 1, fontWeight: "700", fontSize: 17, fontFamily: fonts.display700 },
-  nameRest: { flex: 1, fontWeight: "700", fontSize: 16, fontFamily: fonts.display700 },
-  scoreFirst: { fontWeight: "700", fontSize: 16, fontFamily: fonts.mono700 },
-  scoreRest: { fontWeight: "700", fontSize: 15, fontFamily: fonts.mono700 },
+  bannerMedal: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bannerMedalEmoji: { fontSize: 26 },
+  bannerBody: { flex: 1 },
+  bannerTier: { fontSize: 20, color: "#fff", fontFamily: fonts.heading, letterSpacing: 0.5 },
+  bannerSub: { fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.8)", fontFamily: fonts.mono700, marginTop: 1 },
 
-  youRow: {
+  zoneLabel: { fontSize: 9, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1, fontFamily: fonts.display700, marginTop: 4 },
+
+  list: { gap: 8 },
+  rankRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    backgroundColor: theme.color.violet,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 13,
-    padding: 13,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 5, height: 5 },
+    gap: 10,
+    backgroundColor: theme.color.surface,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 11,
+  },
+  rankRowElevated: {
+    shadowColor: INK,
+    shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 5,
+    elevation: 3,
   },
-  youRank: { width: 26, textAlign: "center", fontWeight: "700", fontSize: 15, color: "#fff", fontFamily: fonts.mono700 },
-  youAvatar: { width: 38, height: 38, borderRadius: 19, borderWidth: theme.border, borderColor: theme.color.ink, alignItems: "center", justifyContent: "center" },
-  youAvatarText: { fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
-  youName: { flex: 1, fontWeight: "700", fontSize: 16, color: "#fff", fontFamily: fonts.display700 },
-  youScore: { fontWeight: "700", fontSize: 15, color: "#fff", fontFamily: fonts.mono700 },
-
-  plainRow: {
-    flexDirection: "row",
+  youRow: { backgroundColor: "#EDE7FF", borderColor: theme.color.hero },
+  relegateRow: { borderColor: theme.color.danger },
+  youInk: { color: theme.color.hero },
+  rank: { width: 20, fontSize: 14, fontWeight: "700", color: INK, fontFamily: fonts.mono700 },
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    borderWidth: theme.borders.hairline,
+    borderColor: INK,
     alignItems: "center",
-    gap: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 15,
-    borderBottomWidth: 2,
-    borderBottomColor: "rgba(26,21,35,0.1)",
+    justifyContent: "center",
   },
-  plainRank: { width: 26, textAlign: "center", fontWeight: "700", fontSize: 14, color: "rgba(26,21,35,0.5)", fontFamily: fonts.mono700 },
-  plainAvatar: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, borderColor: theme.color.ink, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
-  plainAvatarText: { fontWeight: "700", fontSize: 14, color: theme.color.ink, fontFamily: fonts.display700 },
-  plainName: { flex: 1, fontWeight: "600", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display600 },
-  plainScore: { fontWeight: "700", fontSize: 14, color: "rgba(26,21,35,0.6)", fontFamily: fonts.mono700 },
+  avatarText: { fontSize: 14, fontWeight: "700", fontFamily: fonts.display700 },
+  identity: { flex: 1, minWidth: 0 },
+  name: { fontSize: 14, fontWeight: "700", color: INK, fontFamily: fonts.display700 },
+  rowTitle: { fontSize: 10, fontWeight: "600", color: "rgba(36,27,51,0.55)", fontFamily: fonts.display600, marginTop: 1 },
+  youTitle: { color: "rgba(107,62,240,0.7)" },
+  relegateTag: { fontSize: 13, fontWeight: "700", color: theme.color.danger, marginRight: 2 },
+  score: { fontSize: 13, fontWeight: "700", color: theme.color.hero, fontFamily: fonts.mono700 },
 
-  error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
-  note: { fontSize: 12, fontWeight: "600", color: theme.color.ink, opacity: 0.6, lineHeight: 18 },
+  error: { textAlign: "center", marginTop: 40, color: INK, opacity: 0.7 },
+  note: { fontSize: 12, fontWeight: "600", color: INK, opacity: 0.6, lineHeight: 18 },
 
   lowPop: {
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
-    backgroundColor: theme.color.paper,
+    backgroundColor: theme.color.surface,
   },
   lowPopEmoji: { fontSize: 30 },
-  lowPopTitle: { fontWeight: "700", fontSize: 15, color: theme.color.ink, marginTop: 4, fontFamily: fonts.display700 },
-  lowPopBody: { fontSize: 12, lineHeight: 18, color: theme.color.ink, opacity: 0.6, marginTop: 4, textAlign: "center" },
+  lowPopTitle: { fontWeight: "700", fontSize: 15, color: INK, marginTop: 4, fontFamily: fonts.display700 },
+  lowPopBody: { fontSize: 12, lineHeight: 18, color: INK, opacity: 0.6, marginTop: 4, textAlign: "center" },
   lowPopBtn: {
     marginTop: 10,
     height: 40,
     paddingHorizontal: 16,
     justifyContent: "center",
-    backgroundColor: theme.color.violet,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
+    backgroundColor: theme.color.hero,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
     borderRadius: 10,
-    shadowColor: theme.color.ink,
+    shadowColor: INK,
     shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 3,
   },
   lowPopBtnText: { color: "#fff", fontWeight: "700", fontSize: 13, fontFamily: fonts.display700 },
+
+  questsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    backgroundColor: theme.color.gold,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    shadowColor: INK,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  questsEmoji: { fontSize: 18 },
+  questsLinkText: { flex: 1, fontWeight: "700", fontSize: 13, color: INK, fontFamily: fonts.display700 },
+  questsLinkArrow: { fontWeight: "700", fontSize: 18, color: INK, fontFamily: fonts.display700 },
 });

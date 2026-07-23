@@ -17,7 +17,7 @@ export function StreakFreezeExplainerModal({
   return (
     <Modal visible={visible} onRequestClose={onClose}>
       <ModalIcon emoji="❄️" />
-      <ModalTitle>Streak freeze</ModalTitle>
+      <ModalTitle color={theme.color.info}>Streak freeze</ModalTitle>
       <ModalBody>
         Miss a day and a freeze token auto-spends to keep your streak alive. You earn one every{" "}
         {FREEZE_TOKEN_LEVEL_INTERVAL} levels.
@@ -26,7 +26,7 @@ export function StreakFreezeExplainerModal({
         <Text style={styles.chipText}>You have ❄️ {balance}</Text>
       </HardShadow>
       <ModalActions>
-        <ModalButton label="Got it" variant="violet" full onPress={onClose} />
+        <ModalButton label="Got it" variant="info" full onPress={onClose} />
       </ModalActions>
     </Modal>
   );

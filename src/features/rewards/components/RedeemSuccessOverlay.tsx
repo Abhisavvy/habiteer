@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
+import { HardShadow } from "@/components/HardShadow";
+import { Halftone } from "@/components/Halftone";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 
@@ -21,17 +23,19 @@ export function RedeemSuccessOverlay({
 
   return (
     <Pressable style={styles.overlay} onPress={onClose}>
-      <View style={styles.card}>
-        <Text style={styles.burst}>🎉</Text>
-        <Text style={styles.title}>Redeemed!</Text>
+      <HardShadow style={styles.card}>
+        <Halftone color="#FFFFFF" opacity={0.4} id="redeem-sun" />
+        <Text style={styles.burst}>✨🪙✨</Text>
+        <Text style={styles.title}>REDEEMED!</Text>
         <Text style={styles.detail}>
           {name} · −{cost} 🪙
         </Text>
-      </View>
+      </HardShadow>
     </Pressable>
   );
 }
 
+const INK = theme.color.ink;
 const styles = StyleSheet.create({
   overlay: {
     position: "absolute",
@@ -39,21 +43,27 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(26,21,35,0.6)",
+    backgroundColor: "rgba(36,27,51,0.6)",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 50,
   },
   card: {
-    backgroundColor: theme.color.jade,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 12,
+    backgroundColor: theme.color.success,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 14,
     padding: 18,
     alignItems: "center",
     minWidth: 220,
+    overflow: "hidden",
+    shadowColor: INK,
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
   },
-  burst: { fontSize: 34 },
-  title: { fontWeight: "800", fontSize: 20, color: theme.color.ink, marginTop: 4, fontFamily: fonts.display700 },
-  detail: { fontWeight: "700", fontSize: 13, color: theme.color.ink, marginTop: 2, fontFamily: fonts.mono700 },
+  burst: { fontSize: 30 },
+  title: { fontSize: 22, color: "#fff", marginTop: 4, fontFamily: fonts.heading, letterSpacing: 0.5 },
+  detail: { fontWeight: "600", fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 2, fontFamily: fonts.display600 },
 });

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, Pressable, Image, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import Svg, { Circle, Path } from "react-native-svg";
 import { useAddAction } from "@/features/navigation/addAction";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
@@ -25,8 +24,10 @@ import { LevelUpOverlay } from "@/features/completions/components/LevelUpOverlay
 import { UndoToast } from "@/features/completions/components/UndoToast";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { HardShadow } from "@/components/HardShadow";
+import { Ember } from "@/components/Ember";
+import { Halftone } from "@/components/Halftone";
 import { useProfileQuery } from "@/features/profile/useProfile";
-import { avatarColorFor, cardSkinFor } from "@/features/cosmetics/catalog";
+import { cardSkinFor } from "@/features/cosmetics/catalog";
 import { useReminderSync } from "@/features/reminders/useReminderSync";
 import { feedbackComplete, feedbackLevelUp } from "@/features/feedback/feedback";
 
@@ -106,34 +107,29 @@ export default function Home() {
 
   return (
     <View style={styles.root}>
+      <Halftone color={theme.color.ink} opacity={0.1} id="today-bg" />
       <View style={styles.header}>
         <View style={styles.topRow}>
-          <Image source={require("../../assets/icon.png")} style={styles.iconMark} />
-          <Text style={styles.logo}>Habiteer</Text>
+          <Pressable style={styles.mascotTile} onPress={() => router.navigate("/profile")} aria-label="Open profile">
+            <Ember size={40} />
+          </Pressable>
+          <Text style={styles.logo}>HABITEER</Text>
           <HardShadow style={styles.coinBadge}>
             <Text style={styles.coinText}>🪙 {coinBalance ?? 0}</Text>
           </HardShadow>
           <View style={styles.freezeBadge}>
             <Text style={styles.freezeText}>❄️ {freezeBalance ?? 0}</Text>
           </View>
-          <Pressable
-            style={[styles.avatarBtn, { backgroundColor: avatarColorFor(profile?.avatarColor).hex }]}
-            onPress={() => router.navigate("/profile")}
-            aria-label="Open profile"
-          >
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={avatarColorFor(profile?.avatarColor).textColor} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-              <Circle cx="12" cy="8" r="4" />
-              <Path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
-            </Svg>
-          </Pressable>
         </View>
         <LevelBar level={progress.level} intoLevel={progress.intoLevel} need={progress.need} />
         <View style={styles.dateRow}>
           <Text style={styles.dateLabel}>{dateLabel}</Text>
           {dueToday.length > 0 && (
-            <Text style={styles.doneCount}>
-              {doneCount} / {dueToday.length} done
-            </Text>
+            <View style={styles.doneCountPill}>
+              <Text style={styles.doneCount}>
+                {doneCount} / {dueToday.length} done
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -157,7 +153,7 @@ export default function Home() {
 
         {!isLoading && !error && trackables?.length === 0 && !panel && (
           <View style={styles.empty}>
-            <Image source={require("../../assets/icon.png")} style={styles.emptyIcon} />
+            <Ember size={72} expression="sleepy" />
             <Text style={styles.emptyTitle}>No habits yet</Text>
             <Text style={styles.emptyBody}>Add your first habit and start stacking streaks.</Text>
             <HardShadow style={styles.emptyBtn} onPress={() => setPanel({ mode: "add" })}>
@@ -251,8 +247,23 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   topRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  iconMark: { width: 34, height: 34, borderRadius: 9, borderWidth: 2.5, borderColor: theme.color.ink },
-  logo: { flex: 1, fontSize: 20, fontWeight: "800", color: theme.color.ink, letterSpacing: -0.5, fontFamily: fonts.display700 },
+  mascotTile: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    backgroundColor: "#FFE7C4",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  logo: { flex: 1, fontSize: 26, color: theme.color.ink, letterSpacing: 0.5, fontFamily: fonts.heading },
   // Coins dominate the header (filled yellow, hard offset shadow, larger mono) —
   // the payout the whole product thesis is built around gets top visual weight.
   coinBadge: {
@@ -272,32 +283,30 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   coinText: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.mono700 },
-  // Freeze tokens step down to a plain outline chip, no fill.
+  // Freeze tokens: an info-blue chip with white mono text.
   freezeBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    borderWidth: 2,
+    borderWidth: theme.border,
     borderColor: theme.color.ink,
-    borderRadius: 9,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    backgroundColor: theme.color.card,
-  },
-  freezeText: { fontWeight: "700", fontSize: 12, color: theme.color.ink, fontFamily: fonts.mono700 },
-  avatarBtn: {
-    width: 34,
-    height: 34,
     borderRadius: 10,
-    borderWidth: 2.5,
-    borderColor: theme.color.ink,
-    backgroundColor: theme.color.violet,
-    alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    backgroundColor: theme.color.info,
   },
+  freezeText: { fontWeight: "700", fontSize: 12, color: theme.on.info, fontFamily: fonts.mono700 },
   dateRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
   dateLabel: { fontSize: 16, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.display700 },
-  doneCount: { fontSize: 12, fontWeight: "700", color: theme.color.jade, fontFamily: fonts.mono700 },
+  doneCountPill: {
+    borderWidth: theme.borders.hairline,
+    borderColor: theme.color.ink,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+    backgroundColor: theme.color.success,
+  },
+  doneCount: { fontSize: 11, fontWeight: "700", color: theme.on.success, fontFamily: fonts.mono700, textTransform: "uppercase", letterSpacing: 0.5 },
   scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
   list: { gap: 12 },
   error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
@@ -311,7 +320,6 @@ const styles = StyleSheet.create({
     paddingVertical: 22,
     paddingHorizontal: 16,
   },
-  emptyIcon: { width: 52, height: 52, borderRadius: 13, borderWidth: theme.border, borderColor: theme.color.ink },
   emptyTitle: { fontSize: 16, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.display700 },
   emptyBody: { fontSize: 12.5, lineHeight: 19, color: theme.color.ink, opacity: 0.6, textAlign: "center" },
   emptyBtn: {

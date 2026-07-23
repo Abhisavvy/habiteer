@@ -14,41 +14,76 @@ const TABS: { name: string; label: string }[] = [
   { name: "groups", label: "Groups" },
 ];
 
-/** Icon paths extracted verbatim from the design's BottomHUD component (S9), except
- * "groups" — that tab postdates the mockup, so it's a hand-drawn addition matching
- * the same stroke language (2.2 width, round caps/joins). */
-function TabIcon({ name, color }: { name: string; color: string }) {
+const ACTIVE = theme.color.gold;
+const INACTIVE = "rgba(247,236,211,0.55)"; // parchment @55% on the dark bar
+
+/**
+ * Per-tab icon with a solid-gold FILLED form when the tab is active and a
+ * parchment-dim OUTLINE form when it isn't — matching the mockup's HUD, where
+ * the current tab reads as a bold filled glyph and the rest as thin outlines.
+ */
+function TabIcon({ name, active }: { name: string; active: boolean }) {
+  const color = active ? ACTIVE : INACTIVE;
+  const S = 24;
+  const stroke = { fill: "none", stroke: color, strokeWidth: 2.1, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+
   switch (name) {
-    case "index":
-      return (
-        <Svg width={25} height={25} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-          <Rect x="3" y="4" width="18" height="17" rx="3" />
-          <Path d="M3 9h18M8 2v4M16 2v4" />
-          <Path d="M8.5 15l2.2 2.2 4-4.4" />
+    case "index": // house
+      return active ? (
+        <Svg width={S} height={S} viewBox="0 0 24 24">
+          <Path d="M3 11.2 12 3l9 8.2V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" fill={color} />
+        </Svg>
+      ) : (
+        <Svg width={S} height={S} viewBox="0 0 24 24">
+          <Path d="M3 11.2 12 3l9 8.2V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" {...stroke} />
         </Svg>
       );
-    case "rewards":
-      return (
-        <Svg width={25} height={25} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-          <Rect x="3" y="8" width="18" height="13" rx="2" />
-          <Path d="M3 12h18M12 8v13" />
-          <Path d="M12 8S9 3 6.5 4.5 9 8 12 8zM12 8s3-5 5.5-3.5S15 8 12 8z" />
+    case "rewards": // gift
+      return active ? (
+        <Svg width={S} height={S} viewBox="0 0 24 24">
+          <Rect x="3.2" y="7.2" width="17.6" height="4.2" rx="1.2" fill={color} />
+          <Path d="M4.7 11.4h14.6V20a1 1 0 0 1-1 1H5.7a1 1 0 0 1-1-1z" fill={color} />
+          <Path d="M12 7.2C12 7.2 10 3.3 8 4.6 6.4 5.6 9.1 7.2 12 7.2Z" fill={color} />
+          <Path d="M12 7.2C12 7.2 14 3.3 16 4.6 17.6 5.6 14.9 7.2 12 7.2Z" fill={color} />
+          <Rect x="10.8" y="7.2" width="2.4" height="13.8" fill={theme.color.ink} />
+        </Svg>
+      ) : (
+        <Svg width={S} height={S} viewBox="0 0 24 24">
+          <Rect x="3.4" y="7.4" width="17.2" height="4" rx="1.2" {...stroke} />
+          <Path d="M5 11.4V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8.6" {...stroke} />
+          <Path d="M12 7.4V21" {...stroke} />
+          <Path d="M12 7.4S9.8 3.6 7.9 4.8 9.4 7.4 12 7.4Z" {...stroke} />
+          <Path d="M12 7.4s2.2-3.8 4.1-2.6S14.6 7.4 12 7.4Z" {...stroke} />
         </Svg>
       );
-    case "leaderboard":
-      return (
-        <Svg width={25} height={25} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-          <Path d="M7 21V11M12 21V4M17 21v-6" />
-          <Path d="M4 21h16" />
+    case "leaderboard": // bar chart
+      return active ? (
+        <Svg width={S} height={S} viewBox="0 0 24 24">
+          <Rect x="3" y="13" width="4.6" height="8" rx="1.2" fill={color} />
+          <Rect x="9.7" y="8" width="4.6" height="13" rx="1.2" fill={color} />
+          <Rect x="16.4" y="3.5" width="4.6" height="17.5" rx="1.2" fill={color} />
+        </Svg>
+      ) : (
+        <Svg width={S} height={S} viewBox="0 0 24 24">
+          <Rect x="3" y="13" width="4.6" height="8" rx="1.2" {...stroke} />
+          <Rect x="9.7" y="8" width="4.6" height="13" rx="1.2" {...stroke} />
+          <Rect x="16.4" y="3.5" width="4.6" height="17.5" rx="1.2" {...stroke} />
         </Svg>
       );
-    case "groups":
-      return (
-        <Svg width={25} height={25} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-          <Circle cx="9" cy="8" r="3.2" />
-          <Path d="M2.3 20c0-3.6 3-5.6 6.7-5.6s6.7 2 6.7 5.6" />
-          <Path d="M15.7 8.3a3 3 0 010 5.6" />
-          <Path d="M21.7 20c0-2.9-2.1-4.7-4.6-5.4" />
+    case "groups": // two people
+      return active ? (
+        <Svg width={S} height={S} viewBox="0 0 24 24">
+          <Circle cx="16.4" cy="9" r="2.7" fill={color} />
+          <Path d="M15.4 14.4c2.9 0 5.1 1.9 5.1 5a.6.6 0 0 1-.6.6h-4.2z" fill={color} />
+          <Circle cx="9" cy="8.4" r="3.5" fill={color} />
+          <Path d="M9 14.2c3.3 0 6 2 6 5.4a.7.7 0 0 1-.7.7H3.7a.7.7 0 0 1-.7-.7c0-3.4 2.7-5.4 6-5.4z" fill={color} />
+        </Svg>
+      ) : (
+        <Svg width={S} height={S} viewBox="0 0 24 24">
+          <Circle cx="9" cy="8.4" r="3.4" {...stroke} />
+          <Path d="M3.3 20c0-3.4 2.7-5.4 5.7-5.4s5.7 2 5.7 5.4" {...stroke} />
+          <Path d="M15.6 5.5a2.7 2.7 0 0 1 0 5.2" {...stroke} />
+          <Path d="M17.6 14.7c1.9.6 3.4 2 3.4 4.4v.9" {...stroke} />
         </Svg>
       );
     default:
@@ -57,70 +92,75 @@ function TabIcon({ name, color }: { name: string; color: string }) {
 }
 
 /**
- * Custom bottom tab bar matching the design's BottomHUD (S9): 4 tabs
- * (Today/Rewards/Board/Groups) + a raised center "+". Profile moved off
- * the tab bar entirely — reachable via the avatar button on Today — so
- * this is back to the mockup's exact 5-slot structure (2 tabs, "+", 2
- * tabs); Groups (postdating the design) fills the slot the mockup's own
- * "Profile" tab occupied, using a hand-drawn icon in the same stroke
- * language rather than the mockup's Profile icon.
+ * Comic-RPG bottom HUD (P2, Direction A): a floating dark-ink island with a
+ * 52px center well the raised ember "+" sits in. The active tab reads as a
+ * solid gold glyph, the rest as parchment-dim outlines. 4 tabs
+ * (Today/Rewards/Board/Groups); Profile lives on the Ember header tile.
+ * Passed to expo-router's Tabs via the `tabBar` render prop.
  */
 export function BottomHUD({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const handler = useAddAction((s) => s.handler);
   const trigger = useAddAction((s) => s.trigger);
 
+  const tabEls = TABS.map((tab) => {
+    const routeIndex = state.routes.findIndex((r) => r.name === tab.name);
+    if (routeIndex === -1) return null;
+    const route = state.routes[routeIndex];
+    const isFocused = state.index === routeIndex;
+    return (
+      <Pressable
+        key={route.key}
+        style={styles.tab}
+        onPress={() => {
+          const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+          if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
+        }}
+        aria-label={tab.label}
+      >
+        <TabIcon name={tab.name} active={isFocused} />
+        <Text style={[styles.label, { color: isFocused ? ACTIVE : INACTIVE }]}>{tab.label}</Text>
+      </Pressable>
+    );
+  });
+
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { paddingBottom: insets.bottom + 8 }]} pointerEvents="box-none">
       {handler && (
         <View style={styles.floatWrap} pointerEvents="box-none">
           <HardShadow style={styles.floatBtn} onPress={trigger} aria-label="Add">
-            <Svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round">
+            <Svg width={30} height={30} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3.4} strokeLinecap="round">
               <Path d="M12 5v14M5 12h14" />
             </Svg>
           </HardShadow>
         </View>
       )}
-      <View style={[styles.bar, { paddingBottom: 12 + insets.bottom }]}>
-        {TABS.map((tab) => {
-          const routeIndex = state.routes.findIndex((r) => r.name === tab.name);
-          if (routeIndex === -1) return null;
-          const route = state.routes[routeIndex];
-          const isFocused = state.index === routeIndex;
-          const color = isFocused ? theme.color.violet : "rgba(26,21,35,0.4)";
-          return (
-            <Pressable
-              key={route.key}
-              style={styles.tab}
-              onPress={() => {
-                const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-                if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
-              }}
-              aria-label={tab.label}
-            >
-              <TabIcon name={tab.name} color={color} />
-              <Text style={[styles.label, { color }]}>{tab.label}</Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.bar}>
+        {tabEls[0]}
+        {tabEls[1]}
+        <View style={styles.centerWell} />
+        {tabEls[2]}
+        {tabEls[3]}
       </View>
     </View>
   );
 }
 
+const INK = theme.color.ink;
 const styles = StyleSheet.create({
-  wrap: { position: "relative" },
-  floatWrap: { position: "absolute", top: -24, left: 0, right: 0, alignItems: "center", zIndex: 1 },
+  // The island floats with side + bottom margins over the parchment ground.
+  wrap: { paddingHorizontal: 12, paddingTop: 4, backgroundColor: "transparent" },
+  floatWrap: { position: "absolute", top: -20, left: 0, right: 0, alignItems: "center", zIndex: 2 },
   floatBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: theme.color.violet,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.color.ember,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: theme.color.ink,
+    shadowColor: INK,
     shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,
@@ -130,12 +170,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    backgroundColor: "#fff",
-    borderTopWidth: theme.border,
-    borderTopColor: theme.color.ink,
-    paddingTop: 10,
-    paddingHorizontal: 18,
+    backgroundColor: INK,
+    borderRadius: 16,
+    paddingTop: 9,
+    paddingBottom: 9,
+    paddingHorizontal: 16,
   },
-  tab: { width: 56, alignItems: "center", gap: 4 },
-  label: { fontWeight: "700", fontSize: 10, fontFamily: fonts.mono700 },
+  tab: { width: 54, alignItems: "center", gap: 3 },
+  centerWell: { width: 52 },
+  label: { fontWeight: "700", fontSize: 9, fontFamily: fonts.display700 },
 });

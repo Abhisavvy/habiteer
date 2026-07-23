@@ -1,10 +1,11 @@
 import { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useAddAction } from "@/features/navigation/addAction";
 import { HardShadow } from "@/components/HardShadow";
+import { Halftone } from "@/components/Halftone";
 import { useCoinBalanceQuery } from "@/features/completions/useCompletions";
 import {
   useRewardsQuery,
@@ -48,8 +49,9 @@ export default function Rewards() {
 
   return (
     <View style={styles.root}>
+      <Halftone color={theme.color.ink} opacity={0.1} id="rewards-bg" />
       <View style={styles.header}>
-        <Text style={styles.title}>Rewards</Text>
+        <Text style={styles.title}>REWARDS</Text>
         <HardShadow style={styles.statBadge}>
           <Text style={styles.statText}>🪙 {balance}</Text>
         </HardShadow>
@@ -73,6 +75,13 @@ export default function Rewards() {
             />
           ))}
         </View>
+
+        {!isLoading && !error && !panel && (
+          <Pressable style={styles.addReward} onPress={() => setPanel({ mode: "add" })} aria-label="Add reward">
+            <Text style={styles.addRewardPlus}>+</Text>
+            <Text style={styles.addRewardText}>Add reward</Text>
+          </Pressable>
+        )}
 
         {panel?.mode === "add" && (
           <RewardPanel
@@ -172,7 +181,7 @@ const styles = StyleSheet.create({
     paddingTop: 54,
     paddingBottom: 14,
   },
-  title: { fontSize: 22, fontWeight: "800", color: theme.color.ink, fontFamily: fonts.display700 },
+  title: { fontSize: 26, color: theme.color.ink, letterSpacing: 0.5, fontFamily: fonts.heading },
   statBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -193,4 +202,19 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
   list: { gap: 12 },
   error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
+  // Inline dashed "+ Add reward" (mock 03), alongside the floating HUD "+".
+  addReward: {
+    height: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: theme.color.hero,
+    borderRadius: 12,
+    backgroundColor: "transparent",
+  },
+  addRewardPlus: { fontSize: 20, color: theme.color.hero, fontFamily: fonts.heading },
+  addRewardText: { fontSize: 14, fontWeight: "700", color: theme.color.hero, fontFamily: fonts.display700 },
 });

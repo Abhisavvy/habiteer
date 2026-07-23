@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, Animated, Easing } from "react-native";
+import { Text, Pressable, StyleSheet, Animated } from "react-native";
 import { HardShadow } from "@/components/HardShadow";
+import { Halftone } from "@/components/Halftone";
+import { Ember } from "@/components/Ember";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useReduceMotion } from "@/hooks/useReduceMotion";
@@ -15,68 +17,46 @@ export function LevelUpOverlay({
   onClose: () => void;
 }) {
   const reduceMotion = useReduceMotion();
-  const spin = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.85)).current;
   const cardFade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (reduceMotion === null) return; // still checking
-
     if (reduceMotion) {
       scale.setValue(1);
       cardFade.setValue(1);
-      return; // no confetti spin either
+      return;
     }
-
     Animated.parallel([
       Animated.spring(scale, { toValue: 1, friction: 7, tension: 120, useNativeDriver: true }),
       Animated.timing(cardFade, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
-
-    const anim = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 9000, easing: Easing.linear, useNativeDriver: true })
-    );
-    anim.start();
-    return () => anim.stop();
   }, [reduceMotion]);
 
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
-
   if (reduceMotion === null) return null;
+
+  const freezeLine =
+    freezeGained && freezeGained > 0
+      ? ` +${freezeGained} ❄️ freeze token${freezeGained > 1 ? "s" : ""} earned.`
+      : "";
 
   return (
     <Pressable style={styles.overlay} onPress={onClose}>
       <HardShadow style={styles.card} animatedStyle={{ opacity: cardFade, transform: [{ scale }] }}>
-        <View style={[styles.confetti, styles.confettiFire]} />
-        <View style={[styles.confetti, styles.confettiJade]} />
-        <View style={[styles.confetti, styles.confettiViolet]} />
-
-        <View style={styles.starWrap}>
-          <Animated.Text style={[styles.burst, { transform: [{ rotate }] }]}>✦</Animated.Text>
-          <Text style={styles.star}>★</Text>
-        </View>
-
-        <Text style={styles.title}>LEVEL UP</Text>
-        <Text style={styles.num}>LVL {level}</Text>
-
-        {!!freezeGained && freezeGained > 0 && (
-          <HardShadow style={styles.freezeBadge}>
-            <Text style={styles.freezeText}>
-              ❄️ +{freezeGained} freeze token{freezeGained > 1 ? "s" : ""}
-            </Text>
-          </HardShadow>
-        )}
-
-        <Text style={styles.subtitle}>You're on fire 🔥</Text>
-
+        <Halftone color="#FFFFFF" opacity={0.4} id="levelup-sun" />
+        <Text style={styles.party}>🎉</Text>
+        <Text style={styles.num}>LEVEL {level}!</Text>
+        <Ember size={72} expression="celebrate" />
+        <Text style={styles.subtitle}>Ember's glowing brighter!{freezeLine}</Text>
         <HardShadow style={styles.button} onPress={onClose}>
-          <Text style={styles.buttonText}>Keep going</Text>
+          <Text style={styles.buttonText}>Keep going!</Text>
         </HardShadow>
       </HardShadow>
     </Pressable>
   );
 }
 
+const INK = theme.color.ink;
 const styles = StyleSheet.create({
   overlay: {
     position: "absolute",
@@ -84,7 +64,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(26,21,35,0.72)",
+    backgroundColor: "rgba(36,27,51,0.55)",
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
@@ -94,62 +74,47 @@ const styles = StyleSheet.create({
     position: "relative",
     width: "100%",
     maxWidth: 320,
-    backgroundColor: theme.color.paper,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 18,
-    paddingVertical: 30,
-    paddingHorizontal: 22,
+    backgroundColor: theme.color.hero,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 16,
+    paddingVertical: 22,
+    paddingHorizontal: 20,
     alignItems: "center",
-    gap: 6,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 8, height: 8 },
+    gap: 2,
+    overflow: "hidden",
+    shadowColor: INK,
+    shadowOffset: { width: 5, height: 5 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 8,
+    elevation: 5,
   },
-  confetti: { position: "absolute", width: 10, height: 10, borderWidth: 2, borderColor: theme.color.ink },
-  confettiFire: { top: 16, left: 22, backgroundColor: theme.color.fire, borderRadius: 2, transform: [{ rotate: "20deg" }] },
-  confettiJade: { top: 24, right: 30, backgroundColor: theme.color.jade, borderRadius: 10 },
-  confettiViolet: { bottom: 40, left: 34, backgroundColor: theme.color.violet, borderRadius: 2, transform: [{ rotate: "45deg" }] },
-  starWrap: { width: 96, height: 96, alignItems: "center", justifyContent: "center" },
-  burst: { position: "absolute", fontSize: 90, color: theme.color.yellow },
-  star: { fontSize: 46, color: theme.color.yellow },
-  title: { fontWeight: "800", fontSize: 26, letterSpacing: 1, color: theme.color.ink, fontFamily: fonts.display700 },
-  num: { fontWeight: "700", fontSize: 52, lineHeight: 52, color: theme.color.violet, fontFamily: fonts.mono700 },
-  freezeBadge: {
-    marginTop: 4,
-    flexDirection: "row",
+  party: { fontSize: 38 },
+  num: { fontSize: 32, color: theme.color.gold, fontFamily: fonts.heading, letterSpacing: 1 },
+  subtitle: {
+    fontWeight: "600",
+    fontSize: 12.5,
+    color: "rgba(255,255,255,0.85)",
+    textAlign: "center",
+    marginTop: 6,
+    marginBottom: 4,
+    fontFamily: fonts.display600,
+  },
+  button: {
+    marginTop: 6,
+    width: "100%",
+    height: 46,
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
+    justifyContent: "center",
+    backgroundColor: theme.color.gold,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
     borderRadius: 11,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    shadowColor: theme.color.ink,
+    shadowColor: INK,
     shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 3,
   },
-  freezeText: { fontWeight: "700", fontSize: 14, color: theme.color.ink, fontFamily: fonts.display700 },
-  subtitle: { fontWeight: "600", fontSize: 14, color: "rgba(26,21,35,0.6)", marginTop: 4, fontFamily: fonts.display600 },
-  button: {
-    marginTop: 12,
-    width: "100%",
-    height: 50,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.color.violet,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 12,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
-  },
-  buttonText: { fontWeight: "700", fontSize: 16, color: "#fff", fontFamily: fonts.display700 },
+  buttonText: { fontWeight: "700", fontSize: 14, color: INK, fontFamily: fonts.display700 },
 });

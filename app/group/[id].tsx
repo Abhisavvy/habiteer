@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Share } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
+import { Halftone } from "@/components/Halftone";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useCompletionsQuery } from "@/features/completions/useCompletions";
@@ -11,6 +12,7 @@ import { useGroupDetailQuery, useGroupActivityQuery } from "@/features/groups/us
 import { groupStreak, membersDoneToday } from "@/features/groups/streak";
 import { today } from "@/features/trackables/today";
 import { useAuth } from "@/features/auth/useAuth";
+import { avatarColorFor } from "@/features/cosmetics/catalog";
 import { useSharedRewardsQuery, useCreateSharedReward, useContributeToReward } from "@/features/rewards/useRewards";
 import { SharedRewardCard } from "@/features/rewards/components/SharedRewardCard";
 import { RewardPanel } from "@/features/rewards/components/RewardPanel";
@@ -41,6 +43,7 @@ export default function GroupDetail() {
 
   return (
     <View style={styles.root}>
+      <Halftone color={theme.color.ink} opacity={0.1} id="groupdetail-bg" />
       <View style={styles.header}>
         <HardShadow style={styles.backBtn} onPress={() => router.back()} aria-label="Back">
           <ArrowLeft size={18} strokeWidth={2.5} color={theme.color.ink} />
@@ -56,35 +59,51 @@ export default function GroupDetail() {
 
         {group && (
           <>
-            <HardShadow style={styles.codeCard}>
-              <Text style={styles.codeLabel}>Invite code</Text>
-              <Text style={styles.codeValue}>{group.inviteCode}</Text>
-            </HardShadow>
-
-            <HardShadow style={styles.streakCard}>
+            {/* Group streak banner — ember, leads the screen (mock 04) */}
+            <HardShadow style={styles.streakBanner}>
               <Text style={styles.streakEmoji}>{streak > 0 ? "🔥" : "🌱"}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.streakNum}>
-                  {streak > 0 ? `${streak}-day group streak` : "No group streak yet"}
+                  {streak > 0 ? `${streak}-DAY GROUP STREAK` : "NO GROUP STREAK YET"}
                 </Text>
                 <Text style={styles.streakSub}>
-                  {streak > 0
-                    ? "Everyone's shown up, every day — keep it alive."
-                    : "Every member completes something today to start it."}
+                  {streak > 0 ? "Everyone showed up — keep it alive." : "Everyone completes something today to start it."}
                 </Text>
               </View>
             </HardShadow>
 
+            {/* Invite code + share */}
+            <HardShadow style={styles.codeCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.codeLabel}>Invite code</Text>
+                <Text style={styles.codeValue}>{group.inviteCode}</Text>
+              </View>
+              <HardShadow
+                style={styles.shareBtn}
+                onPress={() => Share.share({ message: `Join my Habiteer group "${group.name}" with code ${group.inviteCode}` })}
+                aria-label="Share invite code"
+              >
+                <Text style={styles.shareText}>Share</Text>
+              </HardShadow>
+            </HardShadow>
+
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Today · {group.members.length} member{group.members.length === 1 ? "" : "s"}</Text>
-              <View style={styles.memberRow}>
+              <Text style={styles.sectionTitle}>Members</Text>
+              <View style={styles.list}>
                 {group.members.map((m) => {
                   const done = doneMap.get(m.userId) ?? false;
                   const label = m.userId === myId ? "You" : m.displayName;
+                  const swatch = avatarColorFor(m.avatar);
                   return (
-                    <View key={m.userId} style={[styles.statusChip, done && styles.statusChipDone]}>
-                      <Text style={[styles.statusText, done && styles.statusTextDone]}>
-                        {done ? "✅" : "⏳"} {label}
+                    <View key={m.userId} style={styles.memberRow}>
+                      <View style={[styles.memberAvatar, { backgroundColor: swatch.hex }]}>
+                        <Text style={[styles.memberInitial, { color: swatch.textColor }]}>{label.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <Text style={styles.memberName} numberOfLines={1}>
+                        {label}
+                      </Text>
+                      <Text style={[styles.memberStatus, done ? styles.statusDone : styles.statusPending]}>
+                        {done ? "✅ Today" : "⏳ Pending"}
                       </Text>
                     </View>
                   );
@@ -134,7 +153,8 @@ export default function GroupDetail() {
                     disabled={!canCreateReward}
                     onPress={() => setPanelOpen(true)}
                   >
-                    <Text style={styles.addText}>＋ Add a shared reward</Text>
+                    <Text style={styles.addPlus}>+</Text>
+                    <Text style={styles.addText}>Add a shared reward</Text>
                   </HardShadow>
                 </>
               )}
@@ -146,119 +166,121 @@ export default function GroupDetail() {
   );
 }
 
+const INK = theme.color.ink;
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.paper },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 54,
-    paddingBottom: 14,
-  },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingTop: 54, paddingBottom: 12 },
   backBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
-    shadowColor: theme.color.ink,
+    backgroundColor: theme.color.surface,
+    shadowColor: INK,
     shadowOffset: { width: 2, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 2,
   },
-  title: { flex: 1, fontSize: 22, fontWeight: "800", color: theme.color.ink, fontFamily: fonts.display700 },
-  scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 18 },
-  error: { textAlign: "center", marginTop: 40, color: theme.color.ink, opacity: 0.7 },
-  codeCard: {
+  title: { flex: 1, fontSize: 24, color: INK, fontFamily: fonts.heading, letterSpacing: 0.5 },
+  scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
+  error: { textAlign: "center", marginTop: 40, color: INK, opacity: 0.7 },
+
+  streakBanner: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: theme.color.violet,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: theme.radius,
-    paddingHorizontal: 15,
-    paddingVertical: 13,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 5, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 5,
-  },
-  codeLabel: { fontWeight: "700", fontSize: 13, color: "#fff", opacity: 0.85, fontFamily: fonts.display600 },
-  codeValue: { fontWeight: "800", fontSize: 20, color: "#fff", letterSpacing: 2, fontFamily: fonts.mono700 },
-  section: { gap: 10 },
-  sectionTitle: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: "rgba(26,21,35,0.5)",
-    fontFamily: fonts.mono700,
-  },
-  memberRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  memberChip: {
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: theme.color.card,
-  },
-  memberText: { fontWeight: "600", fontSize: 13, color: theme.color.ink, fontFamily: fonts.display600 },
-  streakCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 13,
-    backgroundColor: theme.color.card,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: theme.radius,
-    paddingHorizontal: 15,
-    paddingVertical: 13,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 5, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 5,
-  },
-  streakEmoji: { fontSize: 30 },
-  streakNum: { fontWeight: "800", fontSize: 17, color: theme.color.ink, fontFamily: fonts.display700 },
-  streakSub: { fontWeight: "600", fontSize: 12, color: "rgba(26,21,35,0.6)", fontFamily: fonts.display600, marginTop: 1 },
-  statusChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: "#fff",
-  },
-  statusChipDone: { backgroundColor: theme.color.jade },
-  statusText: { fontWeight: "700", fontSize: 13, color: "rgba(26,21,35,0.7)", fontFamily: fonts.display600 },
-  statusTextDone: { color: theme.color.ink },
-  list: { gap: 12 },
-  hint: { fontSize: 12, fontWeight: "700", color: theme.color.fire, marginBottom: 8, fontFamily: fonts.mono700 },
-  addBtn: {
-    height: 46,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.color.violet,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 12,
-    shadowColor: theme.color.ink,
+    gap: 12,
+    backgroundColor: theme.color.ember,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 14,
+    padding: 13,
+    shadowColor: INK,
     shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 4,
   },
+  streakEmoji: { fontSize: 32 },
+  streakNum: { fontSize: 24, color: "#fff", fontFamily: fonts.heading, letterSpacing: 0.5 },
+  streakSub: { fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.85)", fontFamily: fonts.mono700, marginTop: 1 },
+
+  codeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: theme.color.surface,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: INK,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  codeLabel: { fontSize: 10, fontWeight: "700", textTransform: "uppercase", color: "rgba(36,27,51,0.55)", fontFamily: fonts.mono700 },
+  codeValue: { fontSize: 22, color: theme.color.hero, letterSpacing: 2, fontFamily: fonts.heading },
+  shareBtn: {
+    height: 36,
+    paddingHorizontal: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.color.hero,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 9,
+  },
+  shareText: { color: "#fff", fontWeight: "700", fontSize: 12, fontFamily: fonts.display700 },
+
+  section: { gap: 8 },
+  sectionTitle: { fontSize: 10, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase", color: "rgba(36,27,51,0.6)", fontFamily: fonts.mono700 },
+  list: { gap: 8 },
+  memberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: theme.color.surface,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 11,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+  memberAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: theme.borders.hairline,
+    borderColor: INK,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  memberInitial: { fontSize: 13, fontWeight: "700", fontFamily: fonts.display700 },
+  memberName: { flex: 1, fontSize: 13, fontWeight: "700", color: INK, fontFamily: fonts.display700 },
+  memberStatus: { fontSize: 12, fontWeight: "700", fontFamily: fonts.mono700 },
+  statusDone: { color: theme.color.success },
+  statusPending: { color: "rgba(36,27,51,0.5)" },
+
+  hint: { fontSize: 12, fontWeight: "700", color: theme.color.ember, marginBottom: 4, fontFamily: fonts.mono700 },
+  addBtn: {
+    height: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: theme.color.hero,
+    borderRadius: 12,
+    backgroundColor: "transparent",
+  },
   addBtnDisabled: { opacity: 0.4 },
-  addText: { fontWeight: "700", fontSize: 15, color: "#fff", fontFamily: fonts.display700 },
+  addPlus: { fontSize: 20, color: theme.color.hero, fontFamily: fonts.heading },
+  addText: { fontWeight: "700", fontSize: 14, color: theme.color.hero, fontFamily: fonts.display700 },
 });

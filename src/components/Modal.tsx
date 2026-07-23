@@ -40,8 +40,8 @@ export function ModalIcon({ emoji, badge }: { emoji: string; badge?: { shape: "c
   );
 }
 
-export function ModalTitle({ children }: { children: ReactNode }) {
-  return <Text style={styles.title}>{children}</Text>;
+export function ModalTitle({ children, color }: { children: ReactNode; color?: string }) {
+  return <Text style={[styles.title, color ? { color } : null]}>{children}</Text>;
 }
 
 export function ModalBody({ children }: { children: ReactNode }) {
@@ -52,12 +52,15 @@ export function ModalActions({ children }: { children: ReactNode }) {
   return <View style={styles.actions}>{children}</View>;
 }
 
+// Color-coded action buttons (mock 05). Colored fills carry white text; the
+// cancel/keep button is a plain surface chip with ink text.
 const VARIANT_STYLE = {
-  cancel: { backgroundColor: theme.color.card, color: theme.color.ink, shadowColor: theme.color.ink },
-  fire: { backgroundColor: theme.color.fire, color: theme.color.ink, shadowColor: theme.color.ink },
-  jade: { backgroundColor: theme.color.jade, color: theme.color.ink, shadowColor: theme.color.ink },
-  violet: { backgroundColor: theme.color.violet, color: "#fff", shadowColor: theme.color.ink },
-  ink: { backgroundColor: theme.color.ink, color: theme.color.paper, shadowColor: theme.color.violet },
+  cancel: { backgroundColor: theme.color.surface, color: theme.color.ink, shadowColor: theme.color.ink },
+  fire: { backgroundColor: theme.color.danger, color: theme.on.danger, shadowColor: theme.color.ink },
+  jade: { backgroundColor: theme.color.success, color: theme.on.success, shadowColor: theme.color.ink },
+  violet: { backgroundColor: theme.color.hero, color: theme.on.hero, shadowColor: theme.color.ink },
+  info: { backgroundColor: theme.color.info, color: theme.on.info, shadowColor: theme.color.ink },
+  ink: { backgroundColor: theme.color.ink, color: theme.color.paper, shadowColor: theme.color.ink },
 } as const;
 
 export function ModalButton({
@@ -99,7 +102,7 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 320,
-    backgroundColor: theme.color.paper,
+    backgroundColor: theme.color.surface,
     borderWidth: theme.border,
     borderColor: theme.color.ink,
     borderRadius: 16,
@@ -107,10 +110,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     shadowColor: theme.color.ink,
-    shadowOffset: { width: 7, height: 7 },
+    shadowOffset: { width: 5, height: 5 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 7,
+    elevation: 5,
   },
   bareIcon: { fontSize: 40 },
   iconBadge: {

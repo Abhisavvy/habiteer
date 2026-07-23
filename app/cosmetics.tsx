@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from "re
 import { router } from "expo-router";
 import { ArrowLeft, Lock, Check } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
+import { Halftone } from "@/components/Halftone";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useProfileQuery, useEquipCosmetic } from "@/features/profile/useProfile";
@@ -25,12 +26,13 @@ export default function Cosmetics() {
 
   return (
     <View style={styles.root}>
+      <Halftone color={theme.color.ink} opacity={0.1} id="cosmetics-bg" />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.headerRow}>
           <HardShadow style={styles.backBtn} onPress={() => router.back()} aria-label="Back">
             <ArrowLeft size={18} strokeWidth={2.5} color={theme.color.ink} />
           </HardShadow>
-          <Text style={styles.title}>Cosmetics</Text>
+          <Text style={styles.title}>COSMETICS</Text>
         </View>
 
         {isLoading ? (
@@ -145,7 +147,7 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 2,
   },
-  title: { fontWeight: "800", fontSize: 22, color: theme.color.ink, fontFamily: fonts.display700 },
+  title: { fontSize: 24, color: theme.color.ink, letterSpacing: 0.5, fontFamily: fonts.heading },
   sectionLabel: {
     fontWeight: "700",
     fontSize: 10,
@@ -208,7 +210,7 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 3,
   },
-  titleRowEquipped: { backgroundColor: "#EDE7FF" },
+  titleRowEquipped: { backgroundColor: "#EDE7FF", borderColor: theme.color.hero },
   titleLabel: { fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
   titleLabelLocked: { color: "rgba(26,21,35,0.4)" },
   titleLockBadge: { flexDirection: "row", alignItems: "center", gap: 4 },

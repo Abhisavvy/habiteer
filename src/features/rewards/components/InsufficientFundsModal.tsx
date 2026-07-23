@@ -19,8 +19,8 @@ export function InsufficientFundsModal({
   const pct = Math.max(0, Math.min(100, (balance / cost) * 100));
   return (
     <Modal visible={visible} onRequestClose={onClose}>
-      <ModalIcon emoji="🪙" />
-      <ModalTitle>{toGo} coins to go</ModalTitle>
+      <ModalIcon emoji="😅" />
+      <ModalTitle color={theme.color.danger}>{toGo} coins to go</ModalTitle>
       <ModalBody>
         "{name}" costs {cost} 🪙. Complete a couple more habits today to unlock it.
       </ModalBody>

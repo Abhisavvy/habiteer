@@ -100,7 +100,7 @@ export function RewardPanel({
 const styles = StyleSheet.create({
   wrap: { gap: 14 },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  headerTitle: { fontSize: 20, fontWeight: "800", color: theme.color.ink, fontFamily: fonts.display700 },
+  headerTitle: { fontSize: 24, color: theme.color.ink, fontFamily: fonts.heading, letterSpacing: 0.5, textTransform: "uppercase" },
   closeBtn: {
     width: 34,
     height: 34,
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: theme.border,
     borderColor: theme.color.ink,
-    backgroundColor: theme.color.jade,
+    backgroundColor: theme.color.hero,
     shadowColor: theme.color.ink,
     shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
@@ -220,5 +220,5 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   primaryBtnDisabled: { opacity: 0.4 },
-  primaryText: { fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
+  primaryText: { fontWeight: "700", fontSize: 15, color: "#fff", fontFamily: fonts.display700 },
 });
