@@ -166,3 +166,72 @@ as $$
     else 9999
   end;
 $$;
+
+create or replace function public.quest_metric(p_id text)
+returns text
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_id
+    when 'busy_bee' then 'completions'
+    when 'steady' then 'active_days'
+    when 'coin_rush' then 'coins_earned'
+    when 'weekend_warrior' then 'completions'
+    else null
+  end;
+$$;
+
+create or replace function public.quest_goal(p_id text)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_id
+    when 'busy_bee' then 15
+    when 'steady' then 5
+    when 'coin_rush' then 200
+    when 'weekend_warrior' then 8
+    else 0
+  end;
+$$;
+
+create or replace function public.quest_reward(p_id text)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_id
+    when 'busy_bee' then 40
+    when 'steady' then 30
+    when 'coin_rush' then 50
+    when 'weekend_warrior' then 60
+    else 0
+  end;
+$$;
+
+create or replace function public.quest_active_from(p_id text)
+returns date
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_id
+    when 'weekend_warrior' then date '2026-07-20'
+    else null::date
+  end;
+$$;
+
+create or replace function public.quest_active_until(p_id text)
+returns date
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_id
+    when 'weekend_warrior' then date '2026-07-27'
+    else null::date
+  end;
+$$;

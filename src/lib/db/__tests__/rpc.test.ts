@@ -29,6 +29,7 @@ import {
   updateProfile,
   getProfileCosmetics,
   resetCosmetics,
+  cleanupQuests,
 } from "./testClient";
 
 beforeAll(async () => {
@@ -866,6 +867,44 @@ describe("trackables — level 5 gate for week/month recurrence", () => {
       period: "week",
       quota: 3,
     });
+    expect(error).not.toBeNull();
+  });
+});
+
+describe("fn_claim_quest", () => {
+  afterEach(async () => {
+    await cleanupQuests();
+  });
+
+  it("rejects an unknown quest id", async () => {
+    const { error } = await testClient.rpc("fn_claim_quest", { p_quest_id: "definitely-not-a-quest" });
+    expect(error).not.toBeNull();
+  });
+
+  it("credits the coin reward once for a met quest, then rejects a second claim that week", async () => {
+    // coin_rush needs >=200 coins earned this week; one seeded completion meets it.
+    // (coins_earned is summed from completions, NOT the ledger, so seeding doesn't move the balance.)
+    const t = await makeTrackable({ kind: "habit", name: "quest-fuel" });
+    try {
+      await seedHistoricalCompletion(t.id, todayUTC(0), 0, 200, 0);
+      const before = await ledgerBalance();
+
+      const { data, error } = await testClient.rpc("fn_claim_quest", { p_quest_id: "coin_rush" });
+      expect(error).toBeNull();
+      expect(data.reward).toBe(50);
+      expect(await ledgerBalance()).toBe(before + 50);
+
+      const second = await testClient.rpc("fn_claim_quest", { p_quest_id: "coin_rush" });
+      expect(second.error).not.toBeNull(); // once-per-week
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("rejects claiming a quest whose goal isn't met", async () => {
+    // busy_bee needs 15 completions this week; a fresh trackable + nothing seeded won't reach it.
+    // (The shared account may carry a few completions this week, but not 15 after cleanups.)
+    const { error } = await testClient.rpc("fn_claim_quest", { p_quest_id: "busy_bee" });
     expect(error).not.toBeNull();
   });
 });

@@ -19,7 +19,7 @@ $$;
 -- 'undo' for fn_undo_completion's compensating ledger entries.
 alter table coin_ledger drop constraint if exists coin_ledger_kind_check;
 alter table coin_ledger add constraint coin_ledger_kind_check
-  check (kind in ('earn', 'redeem', 'contribute', 'undo'));
+  check (kind in ('earn', 'redeem', 'contribute', 'undo', 'quest'));
 
 create index if not exists completions_user_date_idx on completions (user_id, completed_on);
 
@@ -550,6 +550,59 @@ begin
 end;
 $$;
 
+-- v3 Gap #3: claim a weekly quest for a coin reward. Server-authoritative — the
+-- metric is recomputed here from THIS ISO week's completions (never trusts the
+-- client), the reward/goal/window come from the generated quest_* functions
+-- (mirrored from constants.ts), and the (user, quest, week) unique constraint +
+-- the explicit already-claimed check make it idempotent (one claim per week).
+-- Reward is COINS via a 'quest' coin_ledger entry (never XP).
+create or replace function public.fn_claim_quest(p_quest_id text)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_metric   text := quest_metric(p_quest_id);
+  v_goal     int  := quest_goal(p_quest_id);
+  v_reward   int  := quest_reward(p_quest_id);
+  v_from     date := quest_active_from(p_quest_id);
+  v_until    date := quest_active_until(p_quest_id);
+  v_week     date := date_trunc('week', current_app_date())::date;
+  v_progress int;
+  v_balance  int;
+begin
+  if v_metric is null then
+    raise exception 'unknown quest';
+  end if;
+  if (v_from is not null and current_app_date() < v_from)
+     or (v_until is not null and current_app_date() > v_until) then
+    raise exception 'quest not active';
+  end if;
+  if exists (select 1 from quest_claims where user_id = auth.uid() and quest_id = p_quest_id and week = v_week) then
+    raise exception 'already claimed this week';
+  end if;
+
+  v_progress := case v_metric
+    when 'completions'  then (select count(*)::int from completions where user_id = auth.uid() and completed_on >= v_week)
+    when 'active_days'  then (select count(distinct completed_on)::int from completions where user_id = auth.uid() and completed_on >= v_week)
+    when 'coins_earned' then (select coalesce(sum(coins_earned), 0)::int from completions where user_id = auth.uid() and completed_on >= v_week)
+    else 0
+  end;
+  if v_progress < v_goal then
+    raise exception 'quest not complete';
+  end if;
+
+  insert into quest_claims (user_id, quest_id, week, reward)
+    values (auth.uid(), p_quest_id, v_week, v_reward);
+  insert into coin_ledger (user_id, delta, kind) values (auth.uid(), v_reward, 'quest');
+  select coalesce(sum(delta), 0) into v_balance from coin_ledger where user_id = auth.uid();
+
+  return jsonb_build_object('reward', v_reward, 'balance', v_balance, 'week', v_week);
+end;
+$$;
+
 grant execute on function public.fn_complete_trackable(uuid) to authenticated;
 grant execute on function public.fn_undo_completion(uuid) to authenticated;
 grant execute on function public.fn_redeem_reward(uuid) to authenticated;
@@ -557,3 +610,4 @@ grant execute on function public.fn_join_group(text) to authenticated;
 grant execute on function public.fn_contribute_to_reward(uuid, int) to authenticated;
 grant execute on function public.fn_sync_league() to authenticated;
 grant execute on function public.fn_group_activity(uuid, date) to authenticated;
+grant execute on function public.fn_claim_quest(text) to authenticated;

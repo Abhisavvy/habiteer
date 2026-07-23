@@ -1,4 +1,5 @@
 import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Share } from "react-native";
+import { router } from "expo-router";
 import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
@@ -62,6 +63,11 @@ export default function Leaderboard() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {isLoading && <ActivityIndicator style={{ marginTop: 40 }} />}
         {error && <Text style={styles.error}>Couldn't load the leaderboard. Pull to retry.</Text>}
+
+        <HardShadow style={styles.questsLink} onPress={() => router.push("/quests")} aria-label="Open weekly quests">
+          <Text style={styles.questsLinkText}>🎯 Weekly quests</Text>
+          <Text style={styles.questsLinkArrow}>→</Text>
+        </HardShadow>
 
         {activeCount > relegateZoneStart && (
           <Text style={styles.zoneHint}>
@@ -224,6 +230,24 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono700,
   },
   scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
+  questsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: theme.color.yellow,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: theme.radius,
+    paddingHorizontal: 15,
+    paddingVertical: 13,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  questsLinkText: { fontWeight: "800", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display700 },
+  questsLinkArrow: { fontWeight: "800", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display700 },
   list: { gap: 10 },
 
   topRow: { flexDirection: "row", alignItems: "center", gap: 12, borderWidth: theme.border, borderColor: theme.color.ink, borderRadius: 13 },

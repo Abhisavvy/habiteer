@@ -169,6 +169,15 @@ export async function cleanupSharedReward(id: string) {
   await testClient.from("rewards").delete().eq("id", id);
 }
 
+/** Clears the test user's quest claims + any 'quest' coin-ledger credits — call
+ * after quest-claim tests so the once-per-week claim state doesn't leak. */
+export async function cleanupQuests() {
+  const { data: userData } = await testClient.auth.getUser();
+  const uid = userData.user!.id;
+  await testClient.from("quest_claims").delete().eq("user_id", uid);
+  await testClient.from("coin_ledger").delete().eq("user_id", uid).eq("kind", "quest");
+}
+
 /** Inserts a completions row directly, bypassing the RPC — for seeding streak history. */
 export async function seedHistoricalCompletion(
   trackableId: string,

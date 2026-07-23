@@ -1374,7 +1374,57 @@ not a new pairwise-friend system.
     Fixed by killing Metro on 8081 and restarting `expo start --clear`;
     re-grepped the bundle (1 match) before the device showed the new UI.
 
+## v3 Gap #3 (cont.) — Weekly quests + limited-time events (done, device-test pending)
+The research's urgency lever. Weekly challenges with a progress bar + a
+one-time coin reward, derived from this week's completions; "events" are the
+same mechanic time-boxed to a date window.
+
+- **Catalog** in `gamification/constants.ts` (import-free): `QUESTS` with
+  `{id, metric, goal, reward, activeFrom?, activeUntil?}`. Metrics
+  (completions / active_days / coins_earned) are week-scoped and computed
+  identically in TS and SQL. Goals/rewards/metrics/windows mirrored into SQL
+  via `gen-sql-constants.ts` → `quest_metric/goal/reward/active_from/
+  active_until()` so the claim RPC and client can't drift.
+- **Reward = coins only** (never XP — would perturb levels/leagues), bounded
+  (~one claim per quest per ISO week), credited through the same `coin_ledger`
+  path as rewards with a new `'quest'` kind added to its CHECK constraint.
+- **Server**: `quest_claims(user_id, quest_id, week, reward)` table (unique on
+  the triple → idempotent). Security-definer `fn_claim_quest(quest_id)`
+  recomputes the metric server-side for the current week from completions
+  (never trusts the client), checks goal + event window + not-already-claimed,
+  then inserts the claim + a `'quest'` ledger credit. Migration `0009`.
+  **db:push wiped RLS as expected → re-ran `db:apply-sql`; verified 13 policies
+  (12 + own-quest-claims), 0 RLS-disabled, all 6 quest fns + the table + the
+  `'quest'` kind constraint present.**
+- **Events = limited-window quests**: an optional activeFrom/activeUntil makes
+  a quest hidden + unclaimable outside its window (client + RPC enforced); one
+  example (`weekend_warrior`, this-week window, 60-coin reward) with an
+  "Xd left" countdown. Windows are hand-configured (no cron).
+- **Pure logic (TDD)**: `quests/derived.ts` (`questMetricValue`, `questStatus`,
+  `activeQuestStatuses`), 9 cases red→green. Plus 3 `rpc.test.ts` claim cases
+  (unknown-id rejected; met → credits 50 once then second claim rejected;
+  unmet rejected) using a `cleanupQuests` helper.
+- **Client/UI**: `quests/{api,useQuests,catalog}.ts`; new stack-push
+  `app/quests.tsx` (progress bars + Claim buttons + event countdown); entry via
+  a "🎯 Weekly quests" banner on the Board (`leaderboard.tsx`).
+- **Also fixed** the latent `rls.sql` league-policy non-idempotency (added its
+  drop-if-exists) — same fix noted under group-streak.
+- `npx tsc --noEmit` clean; full `vitest run`: **135 passing** (up from 123 —
+  9 quest-logic + 3 claim-RPC tests), same 3 pre-existing drift failures.
+- **Deferred, stated**: economy multipliers (double-coin weekends — touches the
+  hot completion payout path); auto-rotating/scheduled events (needs cron);
+  XP/cosmetic quest rewards.
+- **Device-verified (2026-07-23)**: Board → 🎯 Weekly quests showed real
+  progress (Busy Bee 12/15, Steady 2/5, Coin Rush 200/200, Weekend Warrior
+  event 8/8 with a "4d left" tag). Claiming Coin Rush (+50) and Weekend
+  Warrior (+60) credited exactly 110 quest coins (balance 192 → 302, confirmed
+  in the ledger) and locked both to "Claimed ✓" (idempotent). Full path
+  (fn_claim_quest → coin_ledger → balance) proven, including the event window.
+  Hit the same Metro stale-bundle trap first (quest files missed) — fixed by
+  the documented `expo start --clear` + bundle-grep before reloading.
+
 ## Bugs / blockers
-- Phases 12 & 13 + Gap #3 device verification pending (user deferring); the
-  v3 reminders/sound batch IS device-verified (see above).
+- Phases 12 & 13 device verification pending (user deferring); v3
+  reminders/sound + Gap #3 group-streak ARE device-verified. Quests device
+  test pending (above).
 - Otherwise none blocking. See "Known follow-ups" for accepted v1/v2 gaps.

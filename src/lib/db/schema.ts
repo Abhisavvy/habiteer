@@ -71,6 +71,18 @@ export const leagueStandings = pgTable(
   (t) => ({ onePerWeek: unique().on(t.userId, t.week) })
 );
 
+export const questClaims = pgTable(
+  "quest_claims",
+  {
+    userId: uuid("user_id").notNull().references(() => profiles.id),
+    questId: text("quest_id").notNull(), // matches a QUESTS[].id in gamification/constants.ts
+    week: date("week").notNull(), // Monday of the ISO week the quest was claimed for
+    reward: integer("reward").notNull(), // coins credited (snapshot of the def's reward at claim time)
+    claimedAt: timestamp("claimed_at").defaultNow(),
+  },
+  (t) => ({ oncePerWeek: unique().on(t.userId, t.questId, t.week) })
+);
+
 export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),

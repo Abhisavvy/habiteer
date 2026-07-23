@@ -57,3 +57,28 @@ export const CARD_SKIN_LEVELS: Record<string, number> = {
 export const DEFAULT_AVATAR_COLOR = "violet";
 export const DEFAULT_TITLE = "novice";
 export const DEFAULT_CARD_SKIN = "plain";
+
+/** Weekly quests (v3 Gap #3 — "why show up this week"). Progress is derived
+ * from this week's completions; a quest is claimed once per ISO week for a
+ * coin reward via fn_claim_quest (server-authoritative). Goals/rewards/metrics
+ * are mirrored into SQL (gen-sql-constants.ts) so the claim RPC and the client
+ * can't drift. An optional activeFrom/activeUntil window makes a quest a
+ * limited-time EVENT (hidden + unclaimable outside the window); windows are
+ * configured/rotated by hand here (no cron). Reward is COINS only — never XP,
+ * which would perturb levels/leagues. */
+export type QuestMetric = "completions" | "active_days" | "coins_earned";
+export type QuestDef = {
+  id: string;
+  metric: QuestMetric;
+  goal: number;
+  reward: number; // coins
+  activeFrom?: string; // ISO date, inclusive — event window start
+  activeUntil?: string; // ISO date, inclusive — event window end
+};
+export const QUESTS: QuestDef[] = [
+  { id: "busy_bee", metric: "completions", goal: 15, reward: 40 },
+  { id: "steady", metric: "active_days", goal: 5, reward: 30 },
+  { id: "coin_rush", metric: "coins_earned", goal: 200, reward: 50 },
+  // Example limited-time EVENT (manually windowed); higher reward, this week only.
+  { id: "weekend_warrior", metric: "completions", goal: 8, reward: 60, activeFrom: "2026-07-20", activeUntil: "2026-07-27" },
+];

@@ -210,6 +210,16 @@ create policy "own league standings" on league_standings for all
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
+-- v3 Gap #3: quest claims are per-user; the reward crediting is done by the
+-- security-definer fn_claim_quest, so this policy just scopes reads/writes to
+-- the owner (the client only ever SELECTs its own claim history).
+alter table quest_claims enable row level security;
+
+drop policy if exists "own quest claims" on quest_claims;
+create policy "own quest claims" on quest_claims for all
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
 -- v2 Phase 11: cosmetics (PLAN.md §9 milestone cosmetics, §13 item 11).
 --
 -- Replaces the Phase 1 "own profile" policy (which had no WITH CHECK, so a
