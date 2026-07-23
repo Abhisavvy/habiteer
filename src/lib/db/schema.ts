@@ -53,6 +53,18 @@ export const freezeTokens = pgTable("freeze_tokens", {
   balance: integer("balance").notNull().default(0),
 });
 
+export const leagueStandings = pgTable(
+  "league_standings",
+  {
+    userId: uuid("user_id").notNull().references(() => profiles.id),
+    week: date("week").notNull(), // Monday of the ISO week this row applies to
+    tier: text("tier").notNull(), // 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond'
+    xp: integer("xp").notNull().default(0), // backfilled once the week settles; 0 while current
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({ onePerWeek: unique().on(t.userId, t.week) })
+);
+
 export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),

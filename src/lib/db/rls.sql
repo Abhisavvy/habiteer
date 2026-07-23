@@ -196,3 +196,11 @@ create policy "own trackables" on trackables for all
     user_id = auth.uid()
     and (period is distinct from 'week' and period is distinct from 'month' or caller_level() >= 5)
   );
+
+-- v2 Phase 10: league tiers (PLAN.md §7, §9, §13 item 10).
+
+alter table league_standings enable row level security;
+
+create policy "own league standings" on league_standings for all
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());

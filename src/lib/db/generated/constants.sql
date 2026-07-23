@@ -92,3 +92,30 @@ as $$
   select (level_after / public.freeze_token_level_interval())
        - (level_before / public.freeze_token_level_interval());
 $$;
+
+create or replace function public.league_tiers()
+returns text[]
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select array['bronze', 'silver', 'gold', 'platinum', 'diamond'];
+$$;
+
+create or replace function public.league_promote_top()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select 3;
+$$;
+
+create or replace function public.league_relegate_bottom()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select 3;
+$$;

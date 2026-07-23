@@ -188,3 +188,73 @@ export async function seedHistoricalCompletion(
   });
   if (error) throw error;
 }
+
+/** Test arrangement only — directly backdates the signed-in test user's
+ * league standing, bypassing fn_sync_league(), so a test can arrange "as of
+ * last week they were tier X" without needing a real multi-week history. */
+export async function seedLeagueStanding(week: string, tier: string, xp = 0) {
+  const { data: userData } = await testClient.auth.getUser();
+  const { error } = await testClient
+    .from("league_standings")
+    .upsert({ user_id: userData.user!.id, week, tier, xp }, { onConflict: "user_id,week" });
+  if (error) throw error;
+}
+
+export async function getLeagueStanding(): Promise<{ week: string; tier: string; xp: number } | null> {
+  const { data: userData } = await testClient.auth.getUser();
+  const { data, error } = await testClient
+    .from("league_standings")
+    .select("week, tier, xp")
+    .eq("user_id", userData.user!.id)
+    .order("week", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function cleanupLeagueStandings() {
+  const { data: userData } = await testClient.auth.getUser();
+  await testClient.from("league_standings").delete().eq("user_id", userData.user!.id);
+}
+
+/** A second real account with one completion dated inside `week` earning
+ * `xp` — for league promotion/relegation tests that need real competing
+ * weekly totals (fn_sync_league ranks against every user's actual completions,
+ * not just the caller's, so proving the rank-based branches needs real rivals). */
+export async function makeCompetitor(week: string, xp: number) {
+  const { client, userId } = await makeOtherUser();
+  const { data: t, error: tErr } = await client
+    .from("trackables")
+    .insert({
+      user_id: userId,
+      kind: "habit",
+      name: "[TEST] competitor",
+      emoji: "🧪",
+      difficulty: "easy",
+      coin_value: 10,
+      period: "day",
+      quota: 1,
+    })
+    .select()
+    .single();
+  if (tErr) throw tErr;
+
+  const { error: cErr } = await client.from("completions").insert({
+    trackable_id: t.id,
+    user_id: userId,
+    completed_on: week,
+    xp_earned: xp,
+    coins_earned: 0,
+    streak_after: 1,
+  });
+  if (cErr) throw cErr;
+
+  return {
+    userId,
+    cleanup: async () => {
+      await client.from("completions").delete().eq("trackable_id", t.id);
+      await client.from("trackables").delete().eq("id", t.id);
+    },
+  };
+}

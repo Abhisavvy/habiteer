@@ -1015,5 +1015,80 @@ and no missed-periods view** — the real gap this phase fills.
   navigation.
 - **Not committed** — no commit/push request yet for this phase.
 
+## Phase 10 — League tiers (done)
+Resumed PLAN.md §13's roadmap at item 10. Two things PLAN.md left open —
+exact tier ladder/promotion rule, and how a weekly rollover happens with
+**no server-side cron on this $0-cost stack** (PLAN.md §4) — were resolved
+by design (see the plan file for the full reasoning) rather than guessed:
+
+- **5 tiers** (Bronze→Silver→Gold→Platinum→Diamond), rank-based promotion/
+  relegation on the *existing* global `weekly_leaderboard` view — no new
+  cohort/grouping system, since this app's real user base is tiny and
+  couldn't meaningfully fill separate leagues-of-30 anyway. Rule per
+  settled week: 0 XP → automatic relegation; rank ≤ `LEAGUE_PROMOTE_TOP`
+  (3, among users who earned any XP) → promote; rank in the bottom
+  `LEAGUE_RELEGATE_BOTTOM` (3) of that active pool → relegate; otherwise
+  unchanged. The bottom-zone formula (`rank > max(active_count - 3, 3)`)
+  is deliberately shaped so a small active pool never double-counts a
+  user into both the promotion and relegation zones at once.
+- **Rollover is lazy and client-triggered, not a cron** — a new RPC,
+  `fn_sync_league()`, is idempotent per ISO week (same "safe no-op on
+  retry" shape `fn_complete_trackable` already uses), called from the
+  Board screen's mount. Whichever user opens Board first after a week
+  boundary settles their own row (backfills the just-elapsed week's real
+  XP total, decides promote/relegate/stay); everyone else settles on
+  their own next visit — safe because league state is per-user, not a
+  shared snapshot needing synchronized settlement.
+- New `league_standings(user_id, week, tier, xp)` table (Drizzle migration
+  + `npm run db:push`), RLS policy matching every other per-user table's
+  `user_id = auth.uid()` shape. `LEAGUE_TIERS`/`LEAGUE_PROMOTE_TOP`/
+  `LEAGUE_RELEGATE_BOTTOM` added to `gamification/constants.ts`, mirrored
+  into SQL via the existing `gen-sql-constants.ts` mechanism so client and
+  server can't drift — same pattern `DIFFICULTY_BASE`/`COMBO_TIERS` etc.
+  already use.
+- **Process note, stated honestly**: this RPC was implemented then tested,
+  not test-first — a deviation from the project's own TDD rule for RPCs
+  ("written first, confirmed failing, then implemented," which every
+  earlier RPC phase this session did follow). The 6 new `rpc.test.ts`
+  cases (first-sync seeds Bronze; same-week resync is a no-op; a sole
+  active top performer promotes; a zero-XP week relegates; ranking in the
+  bottom of a real 5-person active pool relegates despite nonzero XP,
+  using new `makeCompetitor()`/`seedLeagueStanding()` test helpers;
+  Diamond never over-promotes) all passed on the first run against the
+  already-applied SQL, so the logic is verified, just not via the red-
+  first ritual for this one function.
+- Client: `leaderboard/api.ts` gets `syncLeague()`/`fetchMyLeague()`;
+  `useLeaderboard.ts` gets `useSyncLeagueOnMount()`. `app/(tabs)/
+  leaderboard.tsx` ("Board" — leagues extend it in place, per PLAN.md's
+  own "weekly leagues... on the leaderboard" framing, not a new tab) gets
+  a tier badge in the header and a relegation-zone "↓" tag on qualifying
+  rows; the zone hint text and tags only render when the *active* pool
+  (weekly XP > 0, not the raw row count — `weekly_leaderboard`'s own view
+  includes every profile ever signed up, active or not) is bigger than
+  the relegate-zone size, so a tiny real population never gets swallowed
+  into a meaningless "everyone's in danger" state.
+- `npx tsc --noEmit` clean; full `vitest run`: 94 passing (up from 88 —
+  the 6 new league tests), same 3 pre-existing unrelated `rpc.test.ts`
+  failures as Phase 9 (confirmed unchanged, still live-account state
+  drift, not this phase's code).
+- **Device-verified**: Board screen shows a correct "BRONZE" tier badge,
+  loads with no crash, "You" ranks correctly, and the relegation hint
+  correctly stays hidden since only 2 real users are active this week
+  (not enough for the zones to be meaningful) — confirmed the graceful-
+  degradation design works as intended, not just in theory. One mid-
+  session hiccup, unrelated to this phase's code: the `adb reverse
+  tcp:8081` tunnel dropped twice more during this session (device
+  connection instability, not a code bug), fixed the same way as before.
+- **Known dev-environment artifact, not a regression**: the live Board
+  now visibly shows several `habiteer.rpctest.other.*` accounts at 0 XP
+  — leftover fixtures from `makeOtherUser()`, a pattern earlier group
+  tests already used before this phase (those test accounts can't be
+  deleted without admin/service-role privileges the anon-key test client
+  doesn't have). `weekly_leaderboard`'s view includes every signed-up
+  profile regardless of activity, so this was already true before this
+  phase; this phase's new `makeCompetitor()` helper just adds a few more
+  such accounts to the pile. Cosmetic only — harmless to real usage.
+- **Not committed** — no commit/push request yet for this phase.
+
 ## Bugs / blockers
 - None blocking. See "Known follow-ups" above for accepted v1/v2 gaps.

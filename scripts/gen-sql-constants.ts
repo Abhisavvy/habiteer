@@ -8,6 +8,9 @@ import {
   LEVEL_XP_EXPONENT,
   FREEZE_TOKEN_LEVEL_INTERVAL,
   FREEZE_TOKEN_MAX_BALANCE,
+  LEAGUE_TIERS,
+  LEAGUE_PROMOTE_TOP,
+  LEAGUE_RELEGATE_BOTTOM,
 } from "../src/features/gamification/constants";
 
 /**
@@ -112,6 +115,33 @@ set search_path = public, pg_catalog
 as $$
   select (level_after / public.freeze_token_level_interval())
        - (level_before / public.freeze_token_level_interval());
+$$;
+
+create or replace function public.league_tiers()
+returns text[]
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select array[${LEAGUE_TIERS.map((t) => `'${t}'`).join(", ")}];
+$$;
+
+create or replace function public.league_promote_top()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select ${LEAGUE_PROMOTE_TOP};
+$$;
+
+create or replace function public.league_relegate_bottom()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select ${LEAGUE_RELEGATE_BOTTOM};
 $$;
 `;
 

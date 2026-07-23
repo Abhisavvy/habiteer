@@ -20,3 +20,10 @@ export const LEVEL_XP_EXPONENT = 1.3;
 /** Freeze tokens: streak insurance. Earned every N levels, capped at a small balance. */
 export const FREEZE_TOKEN_LEVEL_INTERVAL = 5;
 export const FREEZE_TOKEN_MAX_BALANCE = 3;
+
+/** Weekly league tiers, lowest first. Promotion/relegation is rank-based on
+ * the existing global weekly leaderboard, not a separate cohort system. */
+export const LEAGUE_TIERS = ["bronze", "silver", "gold", "platinum", "diamond"] as const;
+export type LeagueTier = (typeof LEAGUE_TIERS)[number];
+export const LEAGUE_PROMOTE_TOP = 3;
+export const LEAGUE_RELEGATE_BOTTOM = 3;

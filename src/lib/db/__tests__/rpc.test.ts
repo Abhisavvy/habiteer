@@ -23,6 +23,9 @@ import {
   cleanupGroup,
   makeSharedReward,
   cleanupSharedReward,
+  seedLeagueStanding,
+  cleanupLeagueStandings,
+  makeCompetitor,
 } from "./testClient";
 
 beforeAll(async () => {
@@ -699,6 +702,90 @@ describe("fn_complete_trackable — period week/month recurrence", () => {
       const { data, error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
       expect(error).toBeNull();
       expect(data.streak_after).toBe(2); // last month (satisfied) + this month (satisfied by today's own completion)
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+});
+
+describe("fn_sync_league", () => {
+  beforeEach(async () => {
+    await cleanupLeagueStandings();
+  });
+
+  it("seeds the lowest tier on the very first sync, with nothing to settle", async () => {
+    const { data, error } = await testClient.rpc("fn_sync_league");
+    expect(error).toBeNull();
+    expect(data.tier).toBe("bronze");
+    expect(data.promoted).toBe(false);
+    expect(data.relegated).toBe(false);
+  });
+
+  it("is a no-op when called again in the same week", async () => {
+    const first = await testClient.rpc("fn_sync_league");
+    const second = await testClient.rpc("fn_sync_league");
+    expect(second.error).toBeNull();
+    expect(second.data.week).toBe(first.data.week);
+    expect(second.data.tier).toBe(first.data.tier);
+  });
+
+  it("promotes a sole active user who ranked top of the settled week", async () => {
+    const lastWeek = prevPeriodStart(weekStart(todayUTC()), "week");
+    await seedLeagueStanding(lastWeek, "bronze", 0);
+    const t = await makeTrackable({ kind: "habit" });
+    try {
+      await seedHistoricalCompletion(t.id, lastWeek, 50, 0, 1);
+      const { data, error } = await testClient.rpc("fn_sync_league");
+      expect(error).toBeNull();
+      expect(data.previousTier).toBe("bronze");
+      expect(data.tier).toBe("silver");
+      expect(data.promoted).toBe(true);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("relegates a user who earned zero XP in the settled week", async () => {
+    const lastWeek = prevPeriodStart(weekStart(todayUTC()), "week");
+    await seedLeagueStanding(lastWeek, "silver", 0);
+    const { data, error } = await testClient.rpc("fn_sync_league");
+    expect(error).toBeNull();
+    expect(data.tier).toBe("bronze");
+    expect(data.relegated).toBe(true);
+  });
+
+  it("relegates a user who ranked in the bottom of an active pool despite earning some XP", async () => {
+    const lastWeek = prevPeriodStart(weekStart(todayUTC()), "week");
+    await seedLeagueStanding(lastWeek, "silver", 0);
+    const t = await makeTrackable({ kind: "habit" });
+    const competitors = await Promise.all([
+      makeCompetitor(lastWeek, 500),
+      makeCompetitor(lastWeek, 400),
+      makeCompetitor(lastWeek, 300),
+      makeCompetitor(lastWeek, 200),
+    ]);
+    try {
+      await seedHistoricalCompletion(t.id, lastWeek, 10, 0, 1); // lowest of the 5 active users this week
+      const { data, error } = await testClient.rpc("fn_sync_league");
+      expect(error).toBeNull();
+      expect(data.tier).toBe("bronze");
+      expect(data.relegated).toBe(true);
+    } finally {
+      await cleanupTrackable(t.id);
+      await Promise.all(competitors.map((c) => c.cleanup()));
+    }
+  });
+
+  it("never promotes past the top tier", async () => {
+    const lastWeek = prevPeriodStart(weekStart(todayUTC()), "week");
+    await seedLeagueStanding(lastWeek, "diamond", 0);
+    const t = await makeTrackable({ kind: "habit" });
+    try {
+      await seedHistoricalCompletion(t.id, lastWeek, 50, 0, 1);
+      const { data, error } = await testClient.rpc("fn_sync_league");
+      expect(error).toBeNull();
+      expect(data.tier).toBe("diamond");
+      expect(data.promoted).toBe(false);
     } finally {
       await cleanupTrackable(t.id);
     }

@@ -3,11 +3,27 @@ import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/features/auth/useAuth";
-import { useLeaderboardQuery } from "@/features/leaderboard/useLeaderboard";
+import { useLeaderboardQuery, useMyLeagueQuery, useSyncLeagueOnMount } from "@/features/leaderboard/useLeaderboard";
 import { weekStart, type ISODate } from "@/features/gamification/dates";
+import { LEAGUE_PROMOTE_TOP, LEAGUE_RELEGATE_BOTTOM, type LeagueTier } from "@/features/gamification/constants";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 const TOP3_AVATAR_BG = [theme.color.card, "#EDE7FF", "#D8F5EC"];
+
+const TIER_COLORS: Record<LeagueTier, string> = {
+  bronze: "#C58E4A",
+  silver: "#AEB4C0",
+  gold: theme.color.yellow,
+  platinum: "#8FD9D0",
+  diamond: theme.color.violet,
+};
+const TIER_TEXT_COLOR: Record<LeagueTier, string> = {
+  bronze: "#fff",
+  silver: theme.color.ink,
+  gold: theme.color.ink,
+  platinum: theme.color.ink,
+  diamond: "#fff",
+};
 
 function resetCountdownLabel(): string {
   const now = new Date();
@@ -23,11 +39,23 @@ function resetCountdownLabel(): string {
 export default function Leaderboard() {
   const userId = useAuth((s) => s.session?.user.id);
   const { data: rows, isLoading, error } = useLeaderboardQuery();
+  const { data: myTier } = useMyLeagueQuery();
+  useSyncLeagueOnMount();
+
+  const activeCount = rows?.filter((r) => r.weeklyXp > 0).length ?? 0;
+  const relegateZoneStart = Math.max(activeCount - LEAGUE_RELEGATE_BOTTOM, LEAGUE_RELEGATE_BOTTOM);
 
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <Text style={styles.title}>This week</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.title}>This week</Text>
+          {myTier && (
+            <HardShadow style={[styles.tierBadge, { backgroundColor: TIER_COLORS[myTier] }]}>
+              <Text style={[styles.tierBadgeText, { color: TIER_TEXT_COLOR[myTier] }]}>{myTier.toUpperCase()}</Text>
+            </HardShadow>
+          )}
+        </View>
         <Text style={styles.resetBadge}>{resetCountdownLabel()}</Text>
       </View>
 
@@ -35,11 +63,18 @@ export default function Leaderboard() {
         {isLoading && <ActivityIndicator style={{ marginTop: 40 }} />}
         {error && <Text style={styles.error}>Couldn't load the leaderboard. Pull to retry.</Text>}
 
+        {activeCount > relegateZoneStart && (
+          <Text style={styles.zoneHint}>
+            Top {LEAGUE_PROMOTE_TOP} promote next week · bottom {activeCount - relegateZoneStart} relegate
+          </Text>
+        )}
+
         <View style={styles.list}>
           {rows?.map((row, i) => {
             const rank = i + 1;
             const isYou = row.id === userId;
             const isTop3 = rank <= 3;
+            const isRelegateZone = row.weeklyXp > 0 && rank > relegateZoneStart && rank <= activeCount;
             const initial = (isYou ? "You" : row.displayName).charAt(0).toUpperCase();
 
             if (isTop3) {
@@ -75,7 +110,7 @@ export default function Leaderboard() {
 
             if (isYou) {
               return (
-                <HardShadow key={row.id} style={styles.youRow}>
+                <HardShadow key={row.id} style={[styles.youRow, isRelegateZone && styles.relegateBorder]}>
                   <Text style={styles.youRank}>{rank}</Text>
                   <View style={[styles.youAvatar, { backgroundColor: theme.color.yellow }]}>
                     <Text style={styles.youAvatarText}>{initial}</Text>
@@ -83,13 +118,14 @@ export default function Leaderboard() {
                   <Text style={styles.youName} numberOfLines={1}>
                     You
                   </Text>
+                  {isRelegateZone && <Text style={styles.relegateTag}>↓</Text>}
                   <Text style={styles.youScore}>{row.weeklyXp.toLocaleString()}</Text>
                 </HardShadow>
               );
             }
 
             return (
-              <View key={row.id} style={styles.plainRow}>
+              <View key={row.id} style={[styles.plainRow, isRelegateZone && styles.relegateBorder]}>
                 <Text style={styles.plainRank}>{rank}</Text>
                 <View style={styles.plainAvatar}>
                   <Text style={styles.plainAvatarText}>{initial}</Text>
@@ -97,6 +133,7 @@ export default function Leaderboard() {
                 <Text style={styles.plainName} numberOfLines={1}>
                   {row.displayName}
                 </Text>
+                {isRelegateZone && <Text style={styles.relegateTag}>↓</Text>}
                 <Text style={styles.plainScore}>{row.weeklyXp.toLocaleString()}</Text>
               </View>
             );
@@ -139,7 +176,19 @@ const styles = StyleSheet.create({
     paddingTop: 54,
     paddingBottom: 14,
   },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
   title: { fontSize: 22, fontWeight: "800", color: theme.color.ink, fontFamily: fonts.display700 },
+  tierBadge: {
+    borderWidth: 2,
+    borderColor: theme.color.ink,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  tierBadgeText: { fontWeight: "700", fontSize: 11, fontFamily: fonts.mono700, letterSpacing: 0.5 },
+  zoneHint: { fontSize: 11, fontWeight: "600", color: "rgba(26,21,35,0.5)", fontFamily: fonts.mono700, marginTop: -6 },
+  relegateBorder: { borderColor: theme.color.fire, borderBottomColor: theme.color.fire },
+  relegateTag: { fontWeight: "700", fontSize: 13, color: theme.color.fire, marginRight: 2 },
   resetBadge: {
     fontWeight: "700",
     fontSize: 12,

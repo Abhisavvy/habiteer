@@ -188,7 +188,7 @@ Conventions: PascalCase components, camelCase vars, JSDoc on exports, `PROGRESS.
 7. **Shared rewards + groups + invite codes** *(done)*
 8. **Week/month quota recurrence** (3×/week, monthly) *(done)*
 9. **Gamified stats page** *(done — per-habit completion rate/streaks/coins earned, an 8-week coins-earned chart, and which habit holds the longest streak, on a new `app/stats.tsx` screen reached from Profile. Best league finish and level history are explicitly excluded — see `PROGRESS.md` — blocked on item 10 and on there being no stored historical level snapshots to reconstruct from, respectively.)*
-10. **League tiers** (promotion/relegation) *(not started)*
+10. **League tiers** (promotion/relegation) *(done — 5 tiers, Bronze→Diamond, rank-based promotion/relegation on the existing global weekly leaderboard rather than a separate cohort system. No server-side cron exists on this $0-cost stack, so the weekly rollover is a lazy, per-user, idempotent-per-week RPC (`fn_sync_league`) triggered on the Board screen's mount instead. Full design reasoning and verification in `PROGRESS.md`.)*
 11. **Cosmetics catalog + capability unlocks** *(not started)*
 12. **Reduction mode** (optional — coins toward abstaining instead of indulging) *(not started)*
 

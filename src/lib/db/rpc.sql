@@ -427,8 +427,102 @@ begin
 end;
 $$;
 
+-- v2 Phase 10: league tiers (PLAN.md §7, §9, §13 item 10). Rank-based
+-- promotion/relegation on the SAME weekly window weekly_leaderboard already
+-- uses (date_trunc('week', ...)) — leagues extend the existing board, not a
+-- separate cohort system. No server-side cron exists on this stack (PLAN.md
+-- §4's whole framing is "nothing extra to host"), so this is a lazy,
+-- idempotent-per-week sync: whichever user opens the Board first after a
+-- week boundary settles their own row; everyone else settles on their own
+-- next visit. League state is per-user, not a shared snapshot, so there's
+-- no coordination problem in that.
+create or replace function public.fn_sync_league()
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_current_week date := date_trunc('week', current_app_date())::date;
+  v_last league_standings;
+  v_prev_week date;
+  v_prev_xp int;
+  v_prev_rank int;
+  v_active_count int;
+  v_tiers text[] := public.league_tiers();
+  v_prev_idx int;
+  v_new_idx int;
+  v_new_tier text;
+begin
+  select * into v_last from league_standings
+    where user_id = auth.uid() order by week desc limit 1;
+
+  -- Already synced for this week — safe no-op, same idempotency shape
+  -- fn_complete_trackable already uses for same-day retries.
+  if v_last.week = v_current_week then
+    return jsonb_build_object('tier', v_last.tier, 'week', v_last.week, 'promoted', false, 'relegated', false);
+  end if;
+
+  -- First sync ever: nothing to settle, seed the lowest tier at the current week.
+  if v_last is null then
+    insert into league_standings (user_id, week, tier, xp) values (auth.uid(), v_current_week, v_tiers[1], 0);
+    return jsonb_build_object('tier', v_tiers[1], 'week', v_current_week, 'promoted', false, 'relegated', false);
+  end if;
+
+  v_prev_week := v_last.week;
+
+  -- Settle the previously-current week now that it's fully elapsed: backfill
+  -- its real total, then decide whether that performance promotes/relegates.
+  select coalesce(sum(xp_earned), 0) into v_prev_xp
+    from completions
+    where user_id = auth.uid() and completed_on >= v_prev_week and completed_on < v_prev_week + 7;
+
+  update league_standings set xp = v_prev_xp where user_id = auth.uid() and week = v_prev_week;
+
+  select count(*) into v_active_count
+    from (
+      select user_id from completions
+      where completed_on >= v_prev_week and completed_on < v_prev_week + 7
+      group by user_id
+    ) active;
+
+  select count(*) + 1 into v_prev_rank
+    from (
+      select user_id, sum(xp_earned) as wxp
+      from completions
+      where completed_on >= v_prev_week and completed_on < v_prev_week + 7
+      group by user_id
+      having sum(xp_earned) > v_prev_xp
+    ) higher;
+
+  v_prev_idx := array_position(v_tiers, v_last.tier);
+  v_new_idx := v_prev_idx;
+
+  if v_prev_xp = 0 then
+    v_new_idx := greatest(1, v_prev_idx - 1); -- inactive week: automatic relegation
+  elsif v_prev_rank <= public.league_promote_top() then
+    v_new_idx := least(array_length(v_tiers, 1), v_prev_idx + 1);
+  elsif v_prev_rank > greatest(v_active_count - public.league_relegate_bottom(), public.league_relegate_bottom()) then
+    v_new_idx := greatest(1, v_prev_idx - 1);
+  end if;
+
+  v_new_tier := v_tiers[v_new_idx];
+  insert into league_standings (user_id, week, tier, xp) values (auth.uid(), v_current_week, v_new_tier, 0);
+
+  return jsonb_build_object(
+    'tier', v_new_tier,
+    'week', v_current_week,
+    'previousTier', v_last.tier,
+    'promoted', v_new_idx > v_prev_idx,
+    'relegated', v_new_idx < v_prev_idx
+  );
+end;
+$$;
+
 grant execute on function public.fn_complete_trackable(uuid) to authenticated;
 grant execute on function public.fn_undo_completion(uuid) to authenticated;
 grant execute on function public.fn_redeem_reward(uuid) to authenticated;
 grant execute on function public.fn_join_group(text) to authenticated;
 grant execute on function public.fn_contribute_to_reward(uuid, int) to authenticated;
+grant execute on function public.fn_sync_league() to authenticated;
