@@ -15,6 +15,7 @@ function trackable(overrides: Partial<Trackable>): Trackable {
     quota: 1,
     weekdays: null,
     dueOn: null,
+    reminderTime: null,
     archivedAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     ...overrides,

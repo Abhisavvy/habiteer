@@ -19,6 +19,7 @@ import { RedeemSuccessOverlay } from "@/features/rewards/components/RedeemSucces
 import { RedeemConfirmModal } from "@/features/rewards/components/RedeemConfirmModal";
 import { InsufficientFundsModal } from "@/features/rewards/components/InsufficientFundsModal";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
+import { feedbackRedeem } from "@/features/feedback/feedback";
 import type { Reward } from "@/features/rewards/api";
 
 type PanelState = { mode: "add" } | { mode: "edit"; reward: Reward } | null;
@@ -122,7 +123,10 @@ export default function Rewards() {
             const r = redeemConfirm;
             setRedeemConfirm(null);
             redeemMutation.mutate(r.id, {
-              onSuccess: () => setRedeemed(r),
+              onSuccess: () => {
+                setRedeemed(r);
+                feedbackRedeem();
+              },
               onError: (e: Error) => Alert.alert("Couldn't redeem that", e.message),
             });
           }}

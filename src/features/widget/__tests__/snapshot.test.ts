@@ -14,6 +14,7 @@ function trackable(overrides: Partial<Trackable>): Trackable {
     coinValue: 10,
     goalType: "build",
     dueOn: null,
+    reminderTime: null,
     period: "day",
     quota: 1,
     weekdays: null,

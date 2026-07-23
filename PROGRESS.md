@@ -1088,7 +1088,238 @@ by design (see the plan file for the full reasoning) rather than guessed:
   profile regardless of activity, so this was already true before this
   phase; this phase's new `makeCompetitor()` helper just adds a few more
   such accounts to the pile. Cosmetic only — harmless to real usage.
+- **Committed + pushed** (`4ca34ad`).
+
+## Phase 11 — Cosmetics catalog + capability unlocks (done)
+Resumed PLAN.md §13 at item 11. Reassessed against §9's bullet first: most
+of "capability unlocks" (Lv 3 groups/shared-rewards, Lv 5 advanced
+recurrence) already ship as real `caller_level()` RLS gates, so the genuine
+gap was the **cosmetics catalog** (nothing existed) + "Lv 2 custom colors."
+
+- **Ships**: milestone-gated avatar colors (violet L1 / jade L2 / fire L5 /
+  yellow L10 / ink L20) and titles (Novice L1 / Builder L5 / Master L10 /
+  Legend L20), equippable from a new `app/cosmetics.tsx` screen (stack-push,
+  mirroring `app/stats.tsx`'s pattern), reached via a "🎨 Cosmetics" link on
+  Profile. Equipped color drives Profile's avatar AND the Today-header avatar
+  button; equipped title shows as a caption under the Profile name.
+- **The gate is RLS, not an RPC — deliberately.** Pressure-testing the plan
+  (at the user's "look for gaps/edge-cases" request) surfaced that the
+  obvious `fn_equip_cosmetic` RPC would be pure theater: the `"own profile"`
+  policy had no WITH CHECK, so a client could `UPDATE profiles SET
+  avatar_color='ink'` directly via PostgREST at level 1 and bypass the RPC
+  entirely. Resolved by following the trackables level-5 gate's own pattern —
+  the Phase-1 `"own profile"` policy is dropped and recreated at the end of
+  `rls.sql` with `with check (id = auth.uid() and caller_level() >=
+  avatar_color_unlock_level(avatar_color) and caller_level() >=
+  title_unlock_level(title_id))`. The client just does a direct `profiles`
+  update; the DB is the enforcement. No RPC added.
+- Other gaps caught + resolved in the plan pass: (a) the WITH CHECK re-runs
+  on display-name-only updates too, but stays safe because levels never
+  decrease and defaults are L1; (b) unknown ids map to unlock level `9999`
+  (generated SQL) so a tampered id fails the same gate; (c) yellow needs an
+  ink initial not white — each catalog color carries its own `textColor`,
+  mirroring the leaderboard tier badge; (d) equipped color wired to BOTH
+  Profile and the Today header so they can't diverge; (e) `handle_new_user`
+  needs no change (new columns have NOT NULL defaults).
+- **Scoped out, stated not dropped**: card skins (invasive `TrackableCard`
+  threading — deferred), full themes (same as full dark mode, always
+  deferred), "more habit slots" (no habit cap exists to gate — inventing one
+  wasn't asked for), and surfacing others' cosmetics on the leaderboard (a
+  "flex to others" nice-to-have needing the columns in `weekly_leaderboard`).
+- **Structure**: id→unlock-level maps live in `gamification/constants.ts`
+  (import-free, so the Node SQL generator consumes them; mirrored to SQL via
+  `gen-sql-constants.ts` — same anti-drift mechanism as every other constant);
+  visual details (hex/textColor/label) in a client-only
+  `features/cosmetics/catalog.ts` that imports `theme`. Two new NOT NULL
+  `profiles` columns (`avatar_color`, `title_id`) via Drizzle migration
+  `0004_*` + `db:push`.
+- **TDD**: 4 `rpc.test.ts` cases (equip an unlocked cosmetic succeeds; one
+  above level rejected by RLS; unknown id rejected; display-name-only update
+  still succeeds) — confirmed RED first (happy path failed on the missing
+  column), then GREEN after `db:push` + `db:apply-sql`, with rejects now
+  failing for the right reason (the gate, not a missing column). New
+  `testClient.ts` helpers reset cosmetics to L1 defaults after each test so a
+  seeded-then-cleaned-up high level never leaves the persistent account in a
+  state where the WITH CHECK blocks later profile updates.
+- `npx tsc --noEmit` clean; full `vitest run`: 98 passing (up from 94 — the
+  4 new cosmetics tests), same 3 pre-existing unrelated failures ([[see
+  dev-db-test-drift]] / the "Known dev-environment artifact" notes above).
+- **Device-verified**: Profile → 🎨 Cosmetics; locked items show their
+  required level, equipping an unlocked color/title updates the Profile
+  avatar + Today header + title caption, no crash (user-confirmed).
 - **Not committed** — no commit/push request yet for this phase.
 
+## Phase 12 — Reduction mode + core-loop fixes (done, device-test deferred)
+Reduction mode (PLAN.md §13 item 12, the last numbered v2 item) shipped as
+"simple abstention" (user's pick over a richer targets/partial-credit
+mechanic): a `goal_type` column ('build' default / 'reduce') on trackables,
+descriptive only — a reduce habit reuses the whole completion/streak/coin/XP
+engine, only the framing differs. Then the user raised three core-loop fixes,
+folded into the same batch (same files):
+
+1. **Undo unified to toast-only, then locked (Case 1).** A habit could be
+   undone indefinitely by re-tapping its done card — removed. Now every
+   completion (habit + task) shows the transient `UndoToast` (~4s); while it's
+   up, UNDO reverts; once it dismisses the completion is locked for the day
+   (the done card's check is non-interactive). `index.tsx` always
+   `setUndoToastFor(t)` + early-returns on an already-done tap; `TrackableCard`
+   drops the done-state undo affordance. Next-day reset (Case 2) makes it
+   actionable again — no separate "locked" store needed.
+2. **Day reset (Case 2).** `today()` is UTC-derived and recomputes per render,
+   but nothing forced a refetch at midnight. Wired TanStack Query's
+   `focusManager` to `AppState` in `app/_layout.tsx` — foregrounding refetches,
+   so a habit left done overnight resets on reopen. Accepted gap: an app left
+   *continuously foregrounded* across midnight won't fire (no timer added).
+3. **Tasks scheduled to a day (Case 3).** New nullable `due_on` column;
+   `filterDueToday` for a task returns `dueOn == null || dueOn <= today` —
+   unscheduled = always due (unchanged), future = hidden until its day, then
+   shows until done (overdue one-offs persist). Confirmed via TDD in
+   `today.test.ts`. Panel gets a "When" preset row (Anytime/Today/Tomorrow/In
+   a week + a ±day stepper — user chose presets over a native date-picker dep,
+   so **no native rebuild**, just a DB column). Card shows the date as its
+   schedule label. Flows to the widget free (reuses `filterDueToday`).
+- Reduction UI: TrackablePanel "Goal" toggle (habit-only); `TrackableCard`
+  reframes via a tiny TDD'd `reductionFraming()` helper (RESISTED ✓ / 🛡️ /
+  REDUCE pill); `UndoToast` gains a `doneVerb` prop ("Resisted" for reduce).
+- **⚠️ Live-DB incident found + fixed mid-phase:** the two `db:push` calls
+  this phase (for `goal_type`, then `due_on`) silently **wiped all RLS** —
+  drizzle-kit reconciles only schema columns, not the hand-authored policies
+  in `rls.sql`, and left every table with RLS **disabled** and all 12 policies
+  dropped (a real anon-key security hole). Caught because RLS-dependent
+  `rpc.test.ts` cases (ownership filtering + the WITH-CHECK gates) started
+  failing "expected null not to be null". Fixed by re-running `db:apply-sql`
+  (idempotent); verified via `pg_class.relrowsecurity` (all true) + 12
+  policies restored. **Lesson (now in memory): always `db:apply-sql` after any
+  `db:push`.**
+- **TDD**: `today.test.ts` task-`dueOn` cases + `reductionFraming` test — both
+  red-first, then green. `npx tsc --noEmit` clean; full `vitest run` back to
+  101 passing / the same 3 pre-existing drift failures (freeze ×2 + level-5
+  gate — all shared-account level inflation, RLS confirmed healthy).
+- **Device test deferred by the user** — the three cases + reduction framing
+  are code-complete and tsc/test-verified but not yet screenshotted on device.
+- **Uncommitted** — Phases 11, 12, and this batch are all still in the working
+  tree awaiting a commit request.
+
+## Phase 13 — Cosmetics tails: leaderboard surfacing + account-wide card skin (done, device-test pending)
+Post-roadmap extension of Phase 11 cosmetics — the user chose the two deferred
+tails: surface others' equipped cosmetics on the Board + one account-wide card
+skin (not per-habit skins, which would thread fragile state through
+`TrackableCard`).
+
+- **Leaderboard surfacing** (no new column — the columns exist from Phase 11):
+  `weekly_leaderboard` view extended to expose `avatar_color`/`title_id`
+  (appended after the existing columns — `CREATE OR REPLACE VIEW` requires
+  existing columns keep their order; verified). `leaderboard/api.ts` maps them;
+  `leaderboard.tsx` renders each row's initial-letter avatar in that player's
+  equipped color (+ its `textColor`) and shows a non-default equipped title as
+  a caption under the name (default 'novice' suppressed as noise). The top-3
+  medal/row-fill treatment is unchanged; only the avatar swatch color + title
+  caption are new.
+- **Account-wide card skin**: new `card_skin` profiles column ('plain' default
+  + cream/mint/lavender/peach, all **light tints** so the card's ink text stays
+  readable — deliberately no dark skin to avoid a contrast refactor). Level-
+  gated exactly like avatar_color/title_id: `CARD_SKIN_LEVELS` in
+  `gamification/constants.ts` → generated `card_skin_unlock_level()` → a new
+  clause in the `profiles` WITH CHECK. `index.tsx` resolves the equipped skin
+  via `cardSkinFor(profile.cardSkin).bg` and passes one `skinBg` prop to each
+  `TrackableCard` (which applies it as the card background, default white) —
+  single prop, no per-card state, minimal touch to the fragile card. New "Card
+  skin" section on `app/cosmetics.tsx` with the same locked/equipped swatches.
+- **TDD**: 3 new `rpc.test.ts` card-skin gate cases (equip unlocked succeeds;
+  above-level rejected by RLS; unknown id rejected) — red-first (column/gate
+  absent), green after push + apply.
+- **db:push RLS wipe — handled correctly this time**: the `card_skin` push
+  again disabled RLS (as expected per the memory note), immediately followed by
+  `db:apply-sql`; verified `pg_class.relrowsecurity` all-true + 12 policies +
+  the view's new columns before running tests. No security window left open.
+- `npx tsc --noEmit` clean; full `vitest run`: 104 passing (up from 101 — the 3
+  new card-skin tests), same 3 pre-existing drift failures only.
+- **Device test pending** — code-complete + tsc/test-verified; not yet
+  screenshotted on device (offered to the user). This closes the cosmetics
+  tails and there is no further planned scope.
+- **Uncommitted** — now Phases 11, 12, and 13 are all in the working tree.
+
+## v3 (post-roadmap, competitor-gap driven) — Reminders + Sounds/Haptics (done, native rebuild + device-test pending)
+A deep-research pass (fanned-out, source-verified) over gamified competitors
+(Finch, Duolingo, Habitica, …) ranked the top additive gaps for Habiteer.
+**Gap #1 (habit reminders)** and the long-stubbed **sounds/haptics** were built
+together as the first v3 batch.
+
+### Reminders — on-device local notifications (`expo-notifications`, $0, no server)
+- **Data**: new nullable `trackables.reminder_time` text column ("HH:MM" 24h;
+  null = no reminder). Threaded through `schema.ts`, `schemas.ts` (regex-
+  validated `reminderTime`), and `api.ts` (`Trackable` type + mapRow +
+  create/update). Descriptive, gates nothing → no RLS clause. Migration
+  `drizzle/0008_bitter_lilith.sql` (single ADD COLUMN).
+  - **db:push RLS wipe — handled**: after the push, re-ran `db:apply-sql`;
+    verified via direct `pg_class`/`pg_policies` query that RLS is enabled on
+    all 10 tables (none disabled) + 12 policies present + the new column
+    exists. No security window left open.
+- **Pure logic (TDD)**: `src/features/reminders/schedule.ts` →
+  `notificationRequestsFor(trackable, now)` returns expo-agnostic trigger
+  descriptors — daily habit → 1 DAILY trigger; specific-weekday habit → N
+  WEEKLY triggers (our 0=Sun mapped to expo's 1=Sun); week/month-quota habit →
+  a daily nudge; task with `dueOn` → one-off DATE trigger (skipped if the slot
+  is already past); no `dueOn`/null/malformed time → none. Reduce habits get
+  "resist"-framed copy. `schedule.test.ts` (11 cases) written first, confirmed
+  RED, then GREEN.
+- **Effect layer**: `scheduler.ts` — `syncReminders(trackables)` does a full
+  cancel-all + reschedule (robust vs. drift after edits/archives/reinstalls),
+  `requestReminderPermission()` (+ Android channel), a master
+  `remindersEnabled` toggle (defaults on), `disableReminders()`. Mapped onto
+  expo `SchedulableTriggerInputTypes`. `useReminderSync` hook re-syncs on
+  trackables-change and on foreground; wired in `index.tsx`.
+- **UI**: `TrackablePanel` gains a "Remind me" row — preset chips (Off / 8AM /
+  12PM / 6PM / 9PM) + a ±15-min stepper (no new datepicker dependency; reuses
+  the panel's chip/stepper idiom). Shown for any habit and for dated tasks
+  (an anytime task has no time anchor). `profile.tsx` "Reminders" row is now a
+  **real master toggle** (was a fake "9:00 AM ›") that requests permission +
+  reschedules, or cancels all.
+- **Native**: `app.config.ts` adds the `expo-notifications` plugin (monochrome
+  status-bar icon + violet tint) and `expo-audio` plugin; `_layout.tsx` sets
+  the foreground notification handler. **Requires `expo prebuild` +
+  `run:android`** (native module — not Fast Refresh).
+
+### Sounds & haptics — wires up the previously-dead Profile toggles
+- **Assets**: 3 self-contained WAV cues synthesized by `scripts/gen-sfx.js`
+  (additive synth + ADSR envelope, no external audio packs, stays $0/offline):
+  `assets/sfx/{complete,redeem,levelup}.wav`.
+- **Module**: `src/features/feedback/feedback.ts` — `feedbackComplete/redeem/
+  levelUp()` fire `expo-haptics` + `expo-audio` playback, gated by a
+  module-level cache of the `sound`/`haptics` settings (so the completion hot
+  path stays synchronous). `loadFeedbackSettings()` called at app init;
+  `setFeedbackSetting()` keeps the cache in step when a Profile toggle flips
+  (avoids an AsyncStorage read-back race). Players created lazily + reused; all
+  playback is fire-and-forget.
+- **Wired**: completion + level-up (`index.tsx`), redeem (`rewards.tsx`). The
+  Profile "Sound effects"/"Haptics" toggles now actually do something.
+
+### Verification
+- `schedule.test.ts` red→green; `npx tsc --noEmit` clean; full `vitest run`:
+  **115 passing** (up from 104 — the 11 new reminder tests), same 3 pre-
+  existing shared-account drift failures only (freeze ×2 + level-5 gate).
+- **Device-verified (2026-07-23)** on the MIUI device after a clean native
+  rebuild. Confirmed live: the reminder picker (presets + ±15-min stepper)
+  renders; saving a habit with a reminder fires the Android notification-
+  permission prompt (granted) and schedules a real `RTC_WAKEUP` alarm at the
+  chosen time (verified via `dumpsys alarm` — daily 8:30 AM → tomorrow
+  08:30); completing a habit produces the haptic buzz + "pop" sound (user-
+  confirmed); reduction framing (Phase 12) shows RESISTED/REDUCE/🛡️ on the
+  card. Level-up/redeem cues share the same feedback path (only the WAV
+  differs), so covered by the completion path.
+  - **Native-build gotchas hit & fixed during the device pass** (recorded in
+    memory): (1) `npx expo install expo-audio` let npm resolve a FUTURE
+    transitive `expo-asset@57.0.7` (SDK-55+) whose `AssetModule` references
+    `expo.modules.kotlin.types.AnyTypeCache` — absent in SDK-54's
+    `expo-modules-core@3.0.30` → `NoClassDefFoundError` native crash on launch
+    (invisible to `expo install --check`, which said "up to date"). Fixed by
+    pinning `expo-asset` to 12.0.13 + clean rebuild. (2) The version churn left
+    a corrupted nested `node_modules/expo-asset/node_modules/expo-constants`
+    (missing `build/`) → Metro 500 on bundle. Fixed by `rm -rf` the nested dir
+    + `npm install` + fresh Metro `--clear`.
+- **Uncommitted** — this v3 batch joins Phases 11/12/13 in the working tree.
+
 ## Bugs / blockers
-- None blocking. See "Known follow-ups" above for accepted v1/v2 gaps.
+- Phases 12 & 13 device verification still pending (user deferring); the v3
+  batch IS now device-verified (see above).
+- Otherwise none blocking. See "Known follow-ups" for accepted v1/v2 gaps.

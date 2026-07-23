@@ -21,6 +21,31 @@ function formatDue(iso: string): string {
   return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** Nudge an "HH:MM" time by whole minutes, wrapping around midnight. */
+function shiftTime(hhmm: string, deltaMin: number): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = (h * 60 + m + deltaMin + 1440) % 1440;
+  return `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`;
+}
+
+/** "18:30" → "6:30 PM" for display. */
+function formatTime(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const ap = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${pad2(m)} ${ap}`;
+}
+
+const REMINDER_PRESETS: { label: string; value: string | null }[] = [
+  { label: "Off", value: null },
+  { label: "8AM", value: "08:00" },
+  { label: "12PM", value: "12:00" },
+  { label: "6PM", value: "18:00" },
+  { label: "9PM", value: "21:00" },
+];
+
 const EMOJI_CHOICES = ["🏃", "💧", "📖", "🧘", "🥗", "💪", "😴"];
 const DIFFICULTIES: { value: Difficulty; label: string }[] = [
   { value: "easy", label: "EASY" },
@@ -69,6 +94,11 @@ export function TrackablePanel({
   );
   const [weekdays, setWeekdays] = useState<number[]>(initial?.weekdays ?? []);
   const [quota, setQuota] = useState(String(initial?.quota && initial.quota > 1 ? initial.quota : 3));
+  const [reminderTime, setReminderTime] = useState<string | null>(initial?.reminderTime ?? null);
+
+  // Reminders make sense for any habit and for a dated task; an "anytime" task
+  // has no time to anchor a notification to, so the picker is hidden there.
+  const showReminder = kind === "habit" || dueOn !== null;
 
   const selectDifficulty = (d: Difficulty) => {
     setDifficulty(d);
@@ -108,6 +138,7 @@ export function TrackablePanel({
       period: kind === "task" ? null : scheduleMode === "weekly" ? "week" : scheduleMode === "monthly" ? "month" : "day",
       quota: kind === "habit" && isRecurrence ? Number(quota) || 1 : 1,
       dueOn: kind === "task" ? dueOn : null,
+      reminderTime: showReminder ? reminderTime : null,
     });
   };
 
@@ -307,6 +338,33 @@ export function TrackablePanel({
           </>
         )}
 
+        {showReminder && (
+          <View style={styles.row}>
+            <Text style={styles.label}>Remind me</Text>
+            <View style={styles.segmented}>
+              {REMINDER_PRESETS.map((p) => (
+                <Pressable
+                  key={p.label}
+                  style={[styles.segment, reminderTime === p.value && styles.segmentSelected]}
+                  onPress={() => setReminderTime(p.value)}
+                >
+                  <Text style={[styles.segmentText, reminderTime === p.value && styles.segmentTextSelected]}>{p.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {reminderTime && (
+              <View style={styles.dueRow}>
+                <Pressable style={styles.stepperBtn} onPress={() => setReminderTime((t) => shiftTime(t ?? "09:00", -15))}>
+                  <Text style={styles.stepperBtnText}>−</Text>
+                </Pressable>
+                <Text style={styles.dueDateText}>{formatTime(reminderTime)}</Text>
+                <Pressable style={styles.stepperBtn} onPress={() => setReminderTime((t) => shiftTime(t ?? "09:00", 15))}>
+                  <Text style={styles.stepperBtnText}>＋</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
       </HardShadow>
 
       <View style={styles.actionsRow}>

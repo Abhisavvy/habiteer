@@ -1,0 +1,1 @@
+ALTER TABLE "trackables" ADD COLUMN "reminder_time" text;

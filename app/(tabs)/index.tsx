@@ -27,16 +27,12 @@ import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { HardShadow } from "@/components/HardShadow";
 import { useProfileQuery } from "@/features/profile/useProfile";
 import { avatarColorFor, cardSkinFor } from "@/features/cosmetics/catalog";
-import { useProfileQuery } from "@/features/profile/useProfile";
-import { avatarColorFor, cardSkinFor } from "@/features/cosmetics/catalog";
-import { useProfileQuery } from "@/features/profile/useProfile";
-import { avatarColorFor, cardSkinFor } from "@/features/cosmetics/catalog";
+import { useReminderSync } from "@/features/reminders/useReminderSync";
+import { feedbackComplete, feedbackLevelUp } from "@/features/feedback/feedback";
 
 type PanelState = { mode: "add" } | { mode: "edit"; trackable: Trackable } | null;
-  const { data: profile } = useProfileQuery();
 
 export default function Home() {
-  const { data: profile } = useProfileQuery();
   const { data: trackables, isLoading, error } = useTrackablesQuery();
   const { data: completions } = useCompletionsQuery();
   const { data: profile } = useProfileQuery();
@@ -55,6 +51,8 @@ export default function Home() {
   const lastKnownLevel = useRef<number | null>(null);
   const lastKnownFreeze = useRef<number | null>(null);
 
+  useReminderSync(trackables);
+
   const todayStr = today();
   const dueToday = trackables ? filterDueToday(trackables, todayStr) : [];
   const allCompletions = completions ?? [];
@@ -71,23 +69,28 @@ export default function Home() {
   const setAddHandler = useAddAction((s) => s.setHandler);
   useFocusEffect(
     useCallback(() => {
+      setAddHandler(() => setPanel({ mode: "add" }));
+      return () => setAddHandler(null);
+    }, [setAddHandler])
+  );
+
+  const handleToggleComplete = (t: Trackable, isDoneToday: boolean, anchor: { x: number; y: number }) => {
     // A done card is locked for the day — undo is only via the transient
     // toast below, never by tapping the card again.
     if (isDoneToday) return;
+    completeMutation.mutate(t.id, {
+      onSuccess: (result) => {
         if (result.xp > 0) spawn(result.xp, anchor);
         const leveledUp = lastKnownLevel.current !== null && result.level.level > lastKnownLevel.current;
-        // Level-up gets its own celebratory cue; otherwise the completion cue.
-        const leveledUp = lastKnownLevel.current !== null && result.level.level > lastKnownLevel.current;
-        // Level-up gets its own celebratory cue; otherwise the completion cue.
-        if (leveledUp) {
         // Level-up gets its own celebratory cue; otherwise the completion cue.
         if (leveledUp) {
           const freezeGained = Math.max(0, result.freezeTokens - (lastKnownFreeze.current ?? result.freezeTokens));
           setLevelUp({ level: result.level.level, freezeGained });
+          feedbackLevelUp();
+        } else {
+          feedbackComplete();
         }
-        // Every completion (habit or task) gets the transient undo toast;
-        // once it dismisses the completion is locked for the day.
-        setUndoToastFor(t);
+        lastKnownLevel.current = result.level.level;
         lastKnownFreeze.current = result.freezeTokens;
         // Every completion (habit or task) gets the transient undo toast;
         // once it dismisses the completion is locked for the day.
@@ -109,20 +112,12 @@ export default function Home() {
           <Text style={styles.logo}>Habiteer</Text>
           <HardShadow style={styles.coinBadge}>
             <Text style={styles.coinText}>🪙 {coinBalance ?? 0}</Text>
-          <Pressable
-            style={[styles.avatarBtn, { backgroundColor: avatarColorFor(profile?.avatarColor).hex }]}
-            onPress={() => router.navigate("/profile")}
-            aria-label="Open profile"
-          >
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={avatarColorFor(profile?.avatarColor).textColor} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+          </HardShadow>
+          <View style={styles.freezeBadge}>
             <Text style={styles.freezeText}>❄️ {freezeBalance ?? 0}</Text>
           </View>
           <Pressable
             style={[styles.avatarBtn, { backgroundColor: avatarColorFor(profile?.avatarColor).hex }]}
-            onPress={() => router.navigate("/profile")}
-            aria-label="Open profile"
-          >
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={avatarColorFor(profile?.avatarColor).textColor} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
             onPress={() => router.navigate("/profile")}
             aria-label="Open profile"
           >
@@ -138,7 +133,6 @@ export default function Home() {
           {dueToday.length > 0 && (
             <Text style={styles.doneCount}>
               {doneCount} / {dueToday.length} done
-            doneVerb={undoToastFor.goalType === "reduce" ? "Resisted" : "Done"}
             </Text>
           )}
         </View>
@@ -147,11 +141,11 @@ export default function Home() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {isLoading && <ActivityIndicator style={{ marginTop: 40 }} />}
         {error && <Text style={styles.error}>Couldn't load your habits. Pull to retry.</Text>}
-            doneVerb={undoToastFor.goalType === "reduce" ? "Resisted" : "Done"}
 
         {undoToastFor && (
           <UndoToast
             name={undoToastFor.name}
+            doneVerb={undoToastFor.goalType === "reduce" ? "Resisted" : "Done"}
             onUndo={() => {
               undoMutation.mutate(undoToastFor.id, {
                 onError: (e: Error) => Alert.alert("Couldn't undo that", e.message),
@@ -167,7 +161,6 @@ export default function Home() {
             <Text style={styles.emptyTitle}>No habits yet</Text>
             <Text style={styles.emptyBody}>Add your first habit and start stacking streaks.</Text>
             <HardShadow style={styles.emptyBtn} onPress={() => setPanel({ mode: "add" })}>
-                skinBg={cardSkinFor(profile?.cardSkin).bg}
               <Text style={styles.emptyBtnText}>＋ Add a habit</Text>
             </HardShadow>
           </View>
@@ -181,6 +174,7 @@ export default function Home() {
                 key={t.id}
                 trackable={t}
                 status={status}
+                skinBg={cardSkinFor(profile?.cardSkin).bg}
                 completing={completeMutation.isPending || undoMutation.isPending}
                 onEdit={() => setPanel({ mode: "edit", trackable: t })}
                 onArchive={() => setDeleteConfirm({ trackable: t, streak: status.streak })}

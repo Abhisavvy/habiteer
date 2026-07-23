@@ -17,6 +17,14 @@ import { overallProgress } from "@/features/completions/derived";
 import { StreakFreezeExplainerModal } from "@/features/completions/components/StreakFreezeExplainerModal";
 import { longestStreakEver } from "@/features/gamification/streak";
 import { avatarColorFor, titleFor } from "@/features/cosmetics/catalog";
+import { setFeedbackSetting } from "@/features/feedback/feedback";
+import {
+  remindersEnabled,
+  setRemindersEnabled,
+  requestReminderPermission,
+  disableReminders,
+  syncReminders,
+} from "@/features/reminders/scheduler";
 
 const STREAK_EXPLAINER_SEEN_KEY = "streakFreezeExplainerSeen";
 
@@ -36,6 +44,35 @@ export default function Profile() {
   const [freezeExplainer, setFreezeExplainer] = useState(false);
   const [soundOn, toggleSound] = useBoolSetting("sound", true);
   const [hapticsOn, toggleHaptics] = useBoolSetting("haptics", true);
+  const [remindersOn, setRemindersOn] = useState(true);
+
+  useEffect(() => {
+    void remindersEnabled().then(setRemindersOn);
+  }, []);
+
+  // Keep the feedback module's synchronous cache in step with the toggles.
+  const onToggleSound = () => {
+    setFeedbackSetting("sound", !soundOn);
+    toggleSound();
+  };
+  const onToggleHaptics = () => {
+    setFeedbackSetting("haptics", !hapticsOn);
+    toggleHaptics();
+  };
+
+  // Master reminders switch: persist, then (on) request permission + reschedule
+  // from the current trackables, or (off) cancel everything.
+  const onToggleReminders = async () => {
+    const next = !remindersOn;
+    setRemindersOn(next);
+    await setRemindersEnabled(next);
+    if (next) {
+      await requestReminderPermission();
+      await syncReminders(trackables ?? []);
+    } else {
+      await disableReminders();
+    }
+  };
 
   const fallbackName = email ? email.split("@")[0] : "You";
   const displayName = profile?.displayName ?? fallbackName;
@@ -184,21 +221,28 @@ export default function Profile() {
           <View style={styles.settingRow}>
             <Text style={styles.settingIcon}>🔊</Text>
             <Text style={styles.settingLabel}>Sound effects</Text>
+            <ToggleSwitch on={soundOn} onPress={onToggleSound} />
           </View>
           <View style={styles.settingRow}>
             <Text style={styles.settingIcon}>📳</Text>
             <Text style={styles.settingLabel}>Haptics</Text>
+            <ToggleSwitch on={hapticsOn} onPress={onToggleHaptics} />
           </View>
           <View style={styles.settingRow}>
             <Text style={styles.settingIcon}>🔔</Text>
             <View style={{ flex: 1 }}>
+              <Text style={styles.settingLabel}>Reminders</Text>
+              <Text style={styles.settingHint}>Set a time per habit when adding or editing it</Text>
+            </View>
+            <ToggleSwitch on={remindersOn} onPress={onToggleReminders} />
+          </View>
+          <View style={[styles.settingRow, styles.settingRowLast]}>
             <Text style={styles.settingIcon}>🌙</Text>
             <Text style={styles.settingLabel}>
               Dark mode <Text style={styles.soonBadge}>SOON</Text>
             </Text>
             <ToggleSwitch on={false} onPress={() => {}} disabled />
           </View>
-            <Text style={styles.settingLabel}>Reminders</Text>
         </HardShadow>
 
         <HardShadow style={styles.signOutBtn} onPress={() => setSignOutConfirm(true)}>
@@ -419,6 +463,7 @@ const styles = StyleSheet.create({
   settingIcon: { fontSize: 18 },
   settingLabel: { flex: 1, fontWeight: "600", fontSize: 15, color: theme.color.ink, fontFamily: fonts.display600 },
   settingValue: { fontWeight: "600", fontSize: 13, color: "rgba(26,21,35,0.5)", fontFamily: fonts.mono700 },
+  settingHint: { fontSize: 11, color: "rgba(26,21,35,0.5)", fontFamily: fonts.display600, marginTop: 1 },
   soonBadge: {
     fontWeight: "700",
     fontSize: 9,

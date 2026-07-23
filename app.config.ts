@@ -49,6 +49,17 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-secure-store",
     "expo-font",
+    "expo-audio",
+    [
+      "expo-notifications",
+      {
+        // Small monochrome status-bar icon + tint for habit reminders. Reuses
+        // the adaptive-icon monochrome layer (already a white-on-transparent
+        // glyph, exactly what Android's notification icon spec wants).
+        icon: "./assets/adaptive-icon-monochrome.png",
+        color: "#7B5CFF",
+      },
+    ],
     [
       "expo-splash-screen",
       {
