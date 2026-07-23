@@ -50,9 +50,13 @@ from auth.users u
 where not exists (select 1 from public.profiles p where p.id = u.id);
 
 -- Leaderboard: a SECURITY DEFINER view exposing only safe, aggregated columns.
+-- CREATE OR REPLACE VIEW requires existing columns keep their order; new ones
+-- (avatar_color, title_id) are appended at the end. Safe under group by p.id
+-- since p.id is the profiles PK (all p.* are functionally dependent).
 create or replace view weekly_leaderboard as
   select p.id, p.display_name, p.avatar,
-         coalesce(sum(c.xp_earned), 0) as weekly_xp
+         coalesce(sum(c.xp_earned), 0) as weekly_xp,
+         p.avatar_color, p.title_id
   from profiles p
   left join completions c
     on c.user_id = p.id and c.completed_on >= date_trunc('week', now())
@@ -225,3 +229,5 @@ create policy "own profile" on profiles for all
     id = auth.uid()
     and caller_level() >= avatar_color_unlock_level(avatar_color)
     and caller_level() >= title_unlock_level(title_id)
+    and caller_level() >= card_skin_unlock_level(card_skin)
+  );

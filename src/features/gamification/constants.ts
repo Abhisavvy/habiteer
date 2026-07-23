@@ -47,3 +47,13 @@ export const TITLE_LEVELS: Record<string, number> = {
   master: 10,
   legend: 20,
 };
+export const CARD_SKIN_LEVELS: Record<string, number> = {
+  plain: 1, // default
+  cream: 2,
+  mint: 4,
+  lavender: 8,
+  peach: 15,
+};
+export const DEFAULT_AVATAR_COLOR = "violet";
+export const DEFAULT_TITLE = "novice";
+export const DEFAULT_CARD_SKIN = "plain";

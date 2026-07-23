@@ -6,6 +6,9 @@ export const profiles = pgTable("profiles", {
   avatar: text("avatar").notNull(), // vestigial (set to '' at signup, never rendered — client draws initial-letter avatars)
   avatarColor: text("avatar_color").notNull().default("violet"), // equipped cosmetic; RLS-gated by level
   titleId: text("title_id").notNull().default("novice"), // equipped cosmetic; RLS-gated by level
+  cardSkin: text("card_skin").notNull().default("plain"), // equipped account-wide card skin; RLS-gated by level
+  avatarColor: text("avatar_color").notNull().default("violet"), // equipped cosmetic; RLS-gated by level
+  titleId: text("title_id").notNull().default("novice"), // equipped cosmetic; RLS-gated by level
   avatarColor: text("avatar_color").notNull().default("violet"), // equipped cosmetic; RLS-gated by level
   titleId: text("title_id").notNull().default("novice"), // equipped cosmetic; RLS-gated by level
   createdAt: timestamp("created_at").defaultNow(),
@@ -15,9 +18,11 @@ export const trackables = pgTable("trackables", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => profiles.id),
   kind: text("kind").notNull(), // 'habit' | 'task'
+  goalType: text("goal_type").notNull().default("build"), // habits: 'build' (default) | 'reduce' (quit/cut-down); descriptive only
   name: text("name").notNull(),
   emoji: text("emoji").notNull(),
   goalType: text("goal_type").notNull().default("build"), // habits: 'build' (default) | 'reduce' (quit/cut-down); descriptive only
+  dueOn: date("due_on"), // tasks only: optional scheduled day; null = always due. Hidden until this date, then shows until done.
   difficulty: text("difficulty").notNull(), // 'easy' | 'medium' | 'hard'
   coinValue: integer("coin_value").notNull(),
   period: text("period"), // habits: 'day' (v1); 'week'|'month' (v2)

@@ -830,6 +830,29 @@ describe("cosmetics — profile equip gate", () => {
     expect(error).toBeNull();
   });
 
+  it("equips a card skin unlocked at or below the caller's level", async () => {
+    const seeded = await seedXp(9000); // past level 10
+    try {
+      const { error } = await updateProfile({ card_skin: "lavender" }); // unlocks at level 8
+      expect(error).toBeNull();
+      expect((await getProfileCosmetics()).card_skin).toBe("lavender");
+    } finally {
+      await resetCosmetics();
+      await seeded.cleanup();
+    }
+  });
+
+  it("rejects a card skin that needs a higher level than the caller has", async () => {
+    const { error } = await updateProfile({ card_skin: "peach" }); // unlocks at level 15
+    expect(error).not.toBeNull();
+  });
+
+  it("rejects an unknown card skin id", async () => {
+    const { error } = await updateProfile({ card_skin: "not-a-real-skin" });
+    expect(error).not.toBeNull();
+  });
+});
+
 describe("trackables — level 5 gate for week/month recurrence", () => {
   it("rejects creating a period='week' trackable below level 5", async () => {
     const { data: userData } = await testClient.auth.getUser();

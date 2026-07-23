@@ -43,6 +43,7 @@ export function TrackableCard({
   onArchive,
   onToggleComplete,
   completing,
+  skinBg,
 }: {
   trackable: Trackable;
   status: TrackableStatus;
@@ -50,6 +51,8 @@ export function TrackableCard({
   onArchive: () => void;
   onToggleComplete: (pageX: number, pageY: number) => void;
   completing?: boolean;
+  /** Account-wide equipped card skin background; defaults to the plain white card. */
+  skinBg?: string;
 }) {
   const tint = DIFF_TINT[trackable.difficulty];
   const lightTint = DIFF_LIGHT_TINT[trackable.difficulty];
@@ -59,6 +62,7 @@ export function TrackableCard({
   const projectedCombo = comboMultiplier(projectedStreak);
 
   return (
+    <HardShadow style={[styles.card, skinBg ? { backgroundColor: skinBg } : null, status.isDoneToday && styles.cardDone]}>
       {status.isDoneToday && (
         <HardShadow style={styles.stamp} pointerEvents="none">
           <Text style={styles.stampText}>{framing.doneStamp}</Text>

@@ -151,3 +151,18 @@ as $$
   end;
 $$;
 
+create or replace function public.card_skin_unlock_level(p_id text)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case p_id
+    when 'plain' then 1
+    when 'cream' then 2
+    when 'mint' then 4
+    when 'lavender' then 8
+    when 'peach' then 15
+    else 9999
+  end;
+$$;

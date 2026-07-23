@@ -6,9 +6,9 @@ import { useAuth } from "@/features/auth/useAuth";
 import { useLeaderboardQuery, useMyLeagueQuery, useSyncLeagueOnMount } from "@/features/leaderboard/useLeaderboard";
 import { weekStart, type ISODate } from "@/features/gamification/dates";
 import { LEAGUE_PROMOTE_TOP, LEAGUE_RELEGATE_BOTTOM, type LeagueTier } from "@/features/gamification/constants";
+import { avatarColorFor, titleFor } from "@/features/cosmetics/catalog";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
-const TOP3_AVATAR_BG = [theme.color.card, "#EDE7FF", "#D8F5EC"];
 
 const TIER_COLORS: Record<LeagueTier, string> = {
   bronze: "#C58E4A",
@@ -76,6 +76,10 @@ export default function Leaderboard() {
             const isTop3 = rank <= 3;
             const isRelegateZone = row.weeklyXp > 0 && rank > relegateZoneStart && rank <= activeCount;
             const initial = (isYou ? "You" : row.displayName).charAt(0).toUpperCase();
+            // Each row's avatar shows that player's own equipped color (the cosmetic
+            // "flex"); a non-default equipped title shows as a caption under the name.
+            const swatch = avatarColorFor(row.avatarColor);
+            const equippedTitle = row.titleId !== "novice" ? titleFor(row.titleId) : null;
 
             if (isTop3) {
               const fill = isYou ? theme.color.violet : rank === 1 ? theme.color.yellow : theme.color.card;
@@ -90,17 +94,19 @@ export default function Leaderboard() {
                   ]}
                 >
                   <Text style={rank === 1 ? styles.medalFirst : styles.medalRest}>{MEDALS[rank - 1]}</Text>
-                  <View
-                    style={[
-                      rank === 1 ? styles.avatarFirst : styles.avatarRest,
-                      { backgroundColor: isYou ? theme.color.yellow : TOP3_AVATAR_BG[rank - 1] },
-                    ]}
-                  >
-                    <Text style={rank === 1 ? styles.avatarTextFirst : styles.avatarTextRest}>{initial}</Text>
+                  <View style={[rank === 1 ? styles.avatarFirst : styles.avatarRest, { backgroundColor: swatch.hex }]}>
+                    <Text style={[rank === 1 ? styles.avatarTextFirst : styles.avatarTextRest, { color: swatch.textColor }]}>{initial}</Text>
                   </View>
-                  <Text style={[rank === 1 ? styles.nameFirst : styles.nameRest, { color: textColor }]} numberOfLines={1}>
-                    {isYou ? "You" : row.displayName}
-                  </Text>
+                  <View style={styles.identityCol}>
+                    <Text style={[rank === 1 ? styles.nameFirst : styles.nameRest, { color: textColor }]} numberOfLines={1}>
+                      {isYou ? "You" : row.displayName}
+                    </Text>
+                    {equippedTitle && (
+                      <Text style={[styles.rowTitle, { color: rank === 1 || isYou ? "rgba(255,255,255,0.85)" : "rgba(26,21,35,0.55)" }]} numberOfLines={1}>
+                        {equippedTitle.label}
+                      </Text>
+                    )}
+                  </View>
                   <Text style={[rank === 1 ? styles.scoreFirst : styles.scoreRest, { color: textColor }]}>
                     {row.weeklyXp.toLocaleString()}
                   </Text>
@@ -112,12 +118,19 @@ export default function Leaderboard() {
               return (
                 <HardShadow key={row.id} style={[styles.youRow, isRelegateZone && styles.relegateBorder]}>
                   <Text style={styles.youRank}>{rank}</Text>
-                  <View style={[styles.youAvatar, { backgroundColor: theme.color.yellow }]}>
-                    <Text style={styles.youAvatarText}>{initial}</Text>
+                  <View style={[styles.youAvatar, { backgroundColor: swatch.hex }]}>
+                    <Text style={[styles.youAvatarText, { color: swatch.textColor }]}>{initial}</Text>
                   </View>
-                  <Text style={styles.youName} numberOfLines={1}>
-                    You
-                  </Text>
+                  <View style={styles.identityCol}>
+                    <Text style={styles.youName} numberOfLines={1}>
+                      You
+                    </Text>
+                    {equippedTitle && (
+                      <Text style={[styles.rowTitle, { color: "rgba(255,255,255,0.85)" }]} numberOfLines={1}>
+                        {equippedTitle.label}
+                      </Text>
+                    )}
+                  </View>
                   {isRelegateZone && <Text style={styles.relegateTag}>↓</Text>}
                   <Text style={styles.youScore}>{row.weeklyXp.toLocaleString()}</Text>
                 </HardShadow>
@@ -127,12 +140,19 @@ export default function Leaderboard() {
             return (
               <View key={row.id} style={[styles.plainRow, isRelegateZone && styles.relegateBorder]}>
                 <Text style={styles.plainRank}>{rank}</Text>
-                <View style={styles.plainAvatar}>
-                  <Text style={styles.plainAvatarText}>{initial}</Text>
+                <View style={[styles.plainAvatar, { backgroundColor: swatch.hex }]}>
+                  <Text style={[styles.plainAvatarText, { color: swatch.textColor }]}>{initial}</Text>
                 </View>
-                <Text style={styles.plainName} numberOfLines={1}>
-                  {row.displayName}
-                </Text>
+                <View style={styles.identityCol}>
+                  <Text style={styles.plainName} numberOfLines={1}>
+                    {row.displayName}
+                  </Text>
+                  {equippedTitle && (
+                    <Text style={[styles.rowTitle, { color: "rgba(26,21,35,0.55)" }]} numberOfLines={1}>
+                      {equippedTitle.label}
+                    </Text>
+                  )}
+                </View>
                 {isRelegateZone && <Text style={styles.relegateTag}>↓</Text>}
                 <Text style={styles.plainScore}>{row.weeklyXp.toLocaleString()}</Text>
               </View>
@@ -189,6 +209,8 @@ const styles = StyleSheet.create({
   zoneHint: { fontSize: 11, fontWeight: "600", color: "rgba(26,21,35,0.5)", fontFamily: fonts.mono700, marginTop: -6 },
   relegateBorder: { borderColor: theme.color.fire, borderBottomColor: theme.color.fire },
   relegateTag: { fontWeight: "700", fontSize: 13, color: theme.color.fire, marginRight: 2 },
+  identityCol: { flex: 1, minWidth: 0 },
+  rowTitle: { fontSize: 10, fontWeight: "700", fontFamily: fonts.mono700, marginTop: 1 },
   resetBadge: {
     fontWeight: "700",
     fontSize: 12,

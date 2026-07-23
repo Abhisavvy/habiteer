@@ -6,6 +6,8 @@ export type LeaderboardRow = {
   displayName: string;
   avatar: string;
   weeklyXp: number;
+  avatarColor: string;
+  titleId: string;
 };
 
 function mapRow(row: Record<string, unknown>): LeaderboardRow {
@@ -14,13 +16,15 @@ function mapRow(row: Record<string, unknown>): LeaderboardRow {
     displayName: row.display_name as string,
     avatar: row.avatar as string,
     weeklyXp: row.weekly_xp as number,
+    avatarColor: (row.avatar_color as string) ?? "violet",
+    titleId: (row.title_id as string) ?? "novice",
   };
 }
 
 export async function fetchWeeklyLeaderboard(): Promise<LeaderboardRow[]> {
   const { data, error } = await supabase
     .from("weekly_leaderboard")
-    .select("id, display_name, avatar, weekly_xp")
+    .select("id, display_name, avatar, weekly_xp, avatar_color, title_id")
     .order("weekly_xp", { ascending: false });
   if (error) throw error;
   return data.map(mapRow);

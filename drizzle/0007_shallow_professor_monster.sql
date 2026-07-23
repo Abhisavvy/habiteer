@@ -1,0 +1,1 @@
+ALTER TABLE "profiles" ADD COLUMN "card_skin" text DEFAULT 'plain' NOT NULL;
