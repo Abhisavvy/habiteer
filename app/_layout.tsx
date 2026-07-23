@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { Stack, Redirect, useSegments } from "expo-router";
-import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache, focusManager } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
@@ -9,6 +9,9 @@ import { useAuth } from "@/features/auth/useAuth";
 import { fontsToLoad } from "@/constants/fonts";
 import { AppSplash } from "@/components/AppSplash";
 import { loadFeedbackSettings } from "@/features/feedback/feedback";
+import { ConnectionToast } from "@/components/ConnectionToast";
+import { isConnectionError } from "@/features/system/connection";
+import { useConnectionToast } from "@/features/system/connectionToast";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -25,7 +28,26 @@ Notifications.setNotificationHandler({
 export default function RootLayout() {
   const { session, ready, init } = useAuth();
   const segments = useSegments();
-  const [queryClient] = useState(() => new QueryClient());
+  // A dropped/unreachable server surfaces as a global "not saved" banner
+  // (see ConnectionToast). Only network-flavored failures trigger it, so
+  // ordinary validation/business errors stay on their own specific handlers.
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        queryCache: new QueryCache({
+          onError: (err) => {
+            if (isConnectionError(err))
+              useConnectionToast.getState().show("Can't reach the server — showing your last saved data.");
+          },
+        }),
+        mutationCache: new MutationCache({
+          onError: (err) => {
+            if (isConnectionError(err))
+              useConnectionToast.getState().show("Couldn't save — you're offline. Check your connection and try again.");
+          },
+        }),
+      })
+  );
   const [fontsLoaded] = useFonts(fontsToLoad);
   const [splashDone, setSplashDone] = useState(false);
 
@@ -65,6 +87,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }} />
       )}
       {!splashDone && <AppSplash onDone={() => setSplashDone(true)} />}
+      <ConnectionToast />
     </QueryClientProvider>
   );
 }

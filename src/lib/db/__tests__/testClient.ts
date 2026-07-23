@@ -124,16 +124,42 @@ export async function seedXp(amount: number): Promise<{ trackableId: string; cle
   return { trackableId: t.id, cleanup: () => cleanupTrackable(t.id) };
 }
 
-/** A second, independent signed-up user — for group-membership / RLS tests
- * that need two real accounts. Returns a signed-in client + their user id. */
+const OTHER_USER_PASSWORD = "OtherUser!2026Habiteer";
+// Sequential per test-run so simultaneous "other users" (e.g. 4 league rivals)
+// are distinct, while the emails are STABLE across runs — so we sign in and
+// reuse the same handful of accounts forever instead of signing up a fresh
+// throwaway every run (which used to pile up hundreds of dead auth users).
+let otherUserCursor = 0;
+
+/** A second, independent signed-up user — for group-membership / RLS / league
+ * tests that need real rival accounts. Reuses a stable pool (buddy1, buddy2, …)
+ * and resets that buddy's own data on acquire so reuse stays deterministic.
+ * Returns a signed-in client + their user id. */
 export async function makeOtherUser() {
-  const email = `habiteer.rpctest.other.${Date.now()}.${Math.random().toString(36).slice(2)}@gmail.com`;
-  const password = "OtherUser!2026Habiteer";
-  const otherClient = createClient(process.env.EXPO_PUBLIC_SUPABASE_URL!, process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!);
-  const { error } = await otherClient.auth.signUp({ email, password });
-  if (error) throw error;
-  const { data: userData } = await otherClient.auth.getUser();
-  return { client: otherClient, userId: userData.user!.id };
+  const slot = ++otherUserCursor;
+  const email = `habiteer.rpctest.buddy${slot}@gmail.com`;
+  const client = createClient(process.env.EXPO_PUBLIC_SUPABASE_URL!, process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!);
+
+  let signIn = await client.auth.signInWithPassword({ email, password: OTHER_USER_PASSWORD });
+  if (signIn.error) {
+    // First time this slot is ever used: create it, then sign in.
+    const signUp = await client.auth.signUp({ email, password: OTHER_USER_PASSWORD });
+    if (signUp.error) throw signUp.error;
+    signIn = await client.auth.signInWithPassword({ email, password: OTHER_USER_PASSWORD });
+    if (signIn.error) throw signIn.error;
+  }
+  const { data: userData } = await client.auth.getUser();
+  const uid = userData.user!.id;
+
+  // Reset this buddy's own rows so a reused account starts clean each run
+  // (RLS scopes these deletes to the buddy's own data). Completions before
+  // trackables (FK). Best-effort — ignore anything RLS won't allow.
+  for (const table of ["completions", "coin_ledger", "quest_claims", "league_standings", "freeze_tokens", "group_members"]) {
+    await client.from(table).delete().eq("user_id", uid);
+  }
+  await client.from("trackables").delete().eq("user_id", uid);
+
+  return { client, userId: uid };
 }
 
 export async function makeGroup(name: string) {

@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:gen-sql": "tsx scripts/gen-sql-constants.ts",
     "db:apply-sql": "tsx scripts/apply-sql.ts",
+    "db:backup": "tsx scripts/backup.ts",
     "ios": "expo run:ios"
   },
   "dependencies": {

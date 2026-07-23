@@ -8,3 +8,6 @@ dist/
 # Native Generation) — config lives in app.config.ts + plugins, not here.
 /android
 /ios
+
+# Local DB backups (contain user data — never commit)
+backups/

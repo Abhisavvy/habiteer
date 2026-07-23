@@ -1423,6 +1423,31 @@ same mechanic time-boxed to a date window.
   Hit the same Metro stale-bundle trap first (quest files missed) — fixed by
   the documented `expo start --clear` + bundle-grep before reloading.
 
+## Server hygiene + offline indicator (done)
+- **Purged 284 accumulated `rpctest.other` test users** from the live DB
+  (transactional, FK-safe; 5 real accounts remain). DB back to a clean 13 MB
+  of the 500 MB free-tier cap.
+- **Stopped the accumulation at the source:** `makeOtherUser` now reuses a
+  **stable buddy pool** (buddy1, buddy2, … — sign-in-or-signup + reset own
+  rows on acquire) instead of signing up a throwaway every run. League/group
+  tests still green, so distinct simultaneous rivals still work.
+- **Backup path** (free tier has NO automated backups/PITR): `npm run db:backup`
+  → `scripts/backup.ts` dumps all public-schema rows + an auth-users snapshot
+  to a timestamped JSON in `backups/` (git-ignored — user data). Schema itself
+  is already in git (migrations + rls/rpc/constants SQL). Verified: 11 tables /
+  1231 rows.
+- **Offline / "not saved" indicator:** a global `<ConnectionToast>` (top banner,
+  fire-colored, warning haptic, auto-dismiss) fires when a query/mutation fails
+  on the network — wired via TanStack Query `QueryCache`/`MutationCache`
+  `onError` in `app/_layout.tsx`, gated by a TDD'd `isConnectionError()` (4
+  cases) so only network failures trigger it (business/validation errors keep
+  their own specific handlers). Copy is honest: mutations say "Couldn't save —
+  you're offline…"; queries say "Can't reach the server — showing your last
+  saved data." `tsc` clean; full suite 139 passing / same 3 drift failures.
+  - Note: on a network failure a mutation's own `Alert` may also fire alongside
+    the banner — acceptable now; can consolidate in the upcoming redesign.
+  - Device test pending (needs airplane-mode to simulate offline).
+
 ## Bugs / blockers
 - Phases 12 & 13 device verification pending (user deferring); v3
   reminders/sound + Gap #3 group-streak ARE device-verified. Quests device
