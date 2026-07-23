@@ -157,6 +157,11 @@ export default function Profile() {
           </View>
         )}
 
+        <HardShadow style={styles.statsLink} onPress={() => router.push("/stats")}>
+          <Text style={styles.statsLinkText}>See full stats</Text>
+          <Text style={styles.statsLinkArrow}>→</Text>
+        </HardShadow>
+
         <HardShadow style={styles.freezeRow} onPress={() => setFreezeExplainer(true)}>
           <Text style={styles.freezeEmoji}>❄️</Text>
           <View style={{ flex: 1 }}>
@@ -337,6 +342,24 @@ const styles = StyleSheet.create({
   },
   statValue: { fontWeight: "700", fontSize: 22, color: theme.color.ink, fontFamily: fonts.mono700 },
   statLabel: { fontWeight: "600", fontSize: 11, color: "rgba(26,21,35,0.6)", fontFamily: fonts.display600, marginTop: 2 },
+  statsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#fff",
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: 12,
+    height: 44,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  statsLinkText: { fontWeight: "700", fontSize: 14, color: theme.color.violet, fontFamily: fonts.display700 },
+  statsLinkArrow: { fontWeight: "700", fontSize: 14, color: theme.color.violet },
   freezeRow: {
     backgroundColor: "#EDE7FF",
     borderWidth: theme.border,

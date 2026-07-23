@@ -184,15 +184,15 @@ Conventions: PascalCase components, camelCase vars, JSDoc on exports, `PROGRESS.
 5. **Personal rewards + basic leaderboard** *(done)* — redeem flow (closes the dinner loop solo); global weekly board.
 
 **v2 — in priority order**
-6. **Android home-screen widget** *(done — light variant only; dark variant is the one open item, see below)*
+6. **Android home-screen widget** *(done — light + dark, device-verified)*
 7. **Shared rewards + groups + invite codes** *(done)*
 8. **Week/month quota recurrence** (3×/week, monthly) *(done)*
-9. **Gamified stats page** *(not started — largely superseded by the Profile screen below, which already covers Total XP/longest streak/habits done/coins; reassess what's actually left here — e.g. per-habit history, missed-period tracking — before treating this as a separate phase)*
+9. **Gamified stats page** *(done — per-habit completion rate/streaks/coins earned, an 8-week coins-earned chart, and which habit holds the longest streak, on a new `app/stats.tsx` screen reached from Profile. Best league finish and level history are explicitly excluded — see `PROGRESS.md` — blocked on item 10 and on there being no stored historical level snapshots to reconstruct from, respectively.)*
 10. **League tiers** (promotion/relegation) *(not started)*
 11. **Cosmetics catalog + capability unlocks** *(not started)*
 12. **Reduction mode** (optional — coins toward abstaining instead of indulging) *(not started)*
 
-**Ad hoc, inserted after item 8 — v2 UX/UI redesign** (a full visual restyle + a few new screens/systems, commissioned separately mid-v2 and not part of the numbered list above): app icon/fonts/splash, Today + add/edit panel restyle, a 5-tab bottom HUD with a raised context-aware "+" button, a new **Profile** screen (the piece that overlaps with item 9 above), a shared modal system, Rewards celebration + Leaderboard ("Board") redesign, overlay polish + widget dark mode, and a follow-up restyle of Groups/shared-rewards (the one screen set the design predated entirely). **All 5 phases (A–E) done, code-complete, plus the Groups follow-up — nothing left to build.** Full detail and exact-spec provenance in the plan file `toasty-wibbling-treasure.md`; rollup in `PROGRESS.md`. **Device verification is the one thing still outstanding** — the phone has been offline for this whole stretch; deferred until it reconnects, and nothing from this pass is committed yet.
+**Ad hoc, inserted after item 8 — v2 UX/UI redesign** (a full visual restyle + a few new screens/systems, commissioned separately mid-v2 and not part of the numbered list above): app icon/fonts/splash, Today + add/edit panel restyle, a 5-tab bottom HUD with a raised context-aware "+" button, a new **Profile** screen (the piece that overlaps with item 9 above), a shared modal system, Rewards celebration + Leaderboard ("Board") redesign, overlay polish + widget dark mode, and a follow-up restyle of Groups/shared-rewards (the one screen set the design predated entirely). **All 5 phases (A–E) done, plus the Groups follow-up, plus a device-verification pass that found and fixed two real cross-cutting bugs (hard shadows never rendering on Android; the splash/sign-in screens not matching the final icon) — all device-verified, nothing left to build.** Full detail and exact-spec provenance in the plan file `toasty-wibbling-treasure.md`; rollup in `PROGRESS.md`.
 
 Plan Mode note: any phase touching >3 files gets its own short pre-flight check-in; `PROGRESS.md` tracks completed/pending/blockers throughout.
 

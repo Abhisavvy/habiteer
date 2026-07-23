@@ -948,5 +948,72 @@ misses. Final shipped state, after all rounds:
   tcp:8081` and it opened normally. Not a code bug.
 - **Not committed** — no commit/push request for this batch yet.
 
+## Phase 9 — Gamified stats page (done)
+"Move to next phase" resumed PLAN.md §13's numbered v2 roadmap where it
+left off (items 6–8 done; the redesign was an ad hoc insertion, not part
+of the numbered sequence). Reassessed the gap against PLAN.md §11's exact
+spec before building anything, per PLAN.md §13's own note that this phase
+is "largely superseded by the Profile screen": Profile already covers
+Total XP / an account-wide max streak / a raw habits-done count / current
+coin balance, but had **no per-habit breakdown, no coins-earned-over-time,
+and no missed-periods view** — the real gap this phase fills.
+
+- New pure-logic module, TDD'd first — `src/features/stats/derived.ts`:
+  - `habitStats(trackable, completions, today)` — reuses
+    `currentStreak`/`longestStreakEver` from `gamification/streak.ts`
+    directly (same functions Profile and `TrackableCard` already call, so
+    this can't drift from the app's own streak rules) for
+    current/longest streak on every habit; for **day-period habits only**,
+    also walks every day from `createdAt` to `today` (reusing `weekday()`
+    the same way `currentStreak`'s day-walk already does) to compute
+    `completed`/`scheduled`/`completionRate` — `scheduled - completed` is
+    the missed-periods count PLAN.md §11 asks for, so no separate function
+    was needed. **Week/month-period habits get `completionRate:
+    undefined`** rather than a fabricated number — the Stats screen falls
+    back to the existing `periodProgress()` "N/M this {week,month}" for
+    those instead, which was already correct.
+  - `coinsPerWeek(completions, today, weeks=8)` — buckets `coinsEarned`
+    (already on every `Completion` row, so no new backend query) by
+    `weekStart()`, zero-filled for weeks with no completions.
+  - `bestStreakHabit(trackables, completions, today)` — which active habit
+    holds the account's longest streak, for the "records" framing.
+  - TDD: `src/features/stats/__tests__/derived.test.ts` (8 cases —
+    completion rate with missed days, weekday-only scheduling, week-period
+    `completionRate` staying `undefined`, coin summing, week-bucket
+    boundaries, zero-filled weeks, best-streak picking among several,
+    null when nobody has any completions) confirmed red
+    (`Cannot find module '../derived'`), then green.
+- New screen `app/stats.tsx` — stack-push route outside the tab bar,
+  mirroring `app/profile.tsx`'s own pattern exactly (`HardShadow` back
+  button, same header/scroll/card conventions): a records row (best-streak
+  habit highlighted, total coins earned all-time, total habits/tasks
+  done), an 8-week coins-earned bar chart (plain `View`s with percentage
+  heights — no new charting dependency, same primitive `LevelBar`'s
+  progress track already uses), and a per-habit list (streak, completion
+  rate or period progress, coins earned).
+- Entry point: `app/profile.tsx` got a new "See full stats →" link below
+  the existing stats grid, `router.push("/stats")`.
+- **Two items explicitly excluded, stated rather than faked**: best
+  league finish (blocked on PLAN.md item 10 — leagues don't exist yet) and
+  level history (no stored historical level snapshots to reconstruct from
+  — completions record XP earned per completion, not level-at-that-time;
+  a real time-series for this is its own separate feature). Archived
+  habits are excluded from per-habit stats, the same accepted limitation
+  Profile's own longest-streak calc already has.
+- `npx tsc --noEmit` clean; full `vitest run`: 88 passing (up from 83 —
+  the 8 new stats tests, minus 3 unrelated pre-existing failures in
+  `rpc.test.ts` — live Supabase integration tests against a persistent
+  test account whose accumulated state has drifted; confirmed via `git
+  status` that no file in `src/lib/db/` was touched this phase, so this
+  is the same class of live-account flakiness Phase D's verification
+  notes already documented, not a regression).
+- **Device-verified**: opened Profile → "See full stats" → real numbers
+  rendered for the account's actual habits (best-streak habit correctly
+  identified, real coin totals, an accurate 8-week chart with only the
+  active week populated), no crash, back button returned to Profile
+  cleanly. Screenshotted both the Stats screen and the return-to-Profile
+  navigation.
+- **Not committed** — no commit/push request yet for this phase.
+
 ## Bugs / blockers
 - None blocking. See "Known follow-ups" above for accepted v1/v2 gaps.
