@@ -5,14 +5,21 @@ import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { taskCoins } from "@/features/gamification/coins";
 import { comboMultiplier } from "@/features/gamification/combo";
-import { DIFF_TINT, DIFF_LIGHT_TINT, LIGHT_VIOLET } from "../constants";
+import { DIFF_TINT, DIFF_LIGHT_TINT, LIGHT_VIOLET, reductionFraming } from "../constants";
+import { today } from "../today";
 import type { Trackable } from "../api";
 import type { TrackableStatus } from "@/features/completions/derived";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function scheduleLabel(t: Trackable): string {
-  if (t.kind !== "habit") return "Today";
+  if (t.kind !== "habit") {
+    // Scheduled task: show its day (e.g. "Jul 30") unless it's today.
+    if (t.dueOn && t.dueOn !== today()) {
+      return new Date(t.dueOn + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    }
+    return "Today";
+  }
   if (t.period === "week") return `Weekly ×${t.quota}`;
   if (t.period === "month") return t.quota > 1 ? `Monthly ×${t.quota}` : "Monthly";
   if (!t.weekdays || t.weekdays.length === 0) return "Daily";
@@ -47,14 +54,14 @@ export function TrackableCard({
   const tint = DIFF_TINT[trackable.difficulty];
   const lightTint = DIFF_LIGHT_TINT[trackable.difficulty];
   const schedule = scheduleLabel(trackable);
+  const framing = reductionFraming(trackable.goalType);
   const projectedStreak = status.isDoneToday ? status.streak : status.streak + 1;
   const projectedCombo = comboMultiplier(projectedStreak);
 
   return (
-    <HardShadow style={[styles.card, status.isDoneToday && styles.cardDone]}>
       {status.isDoneToday && (
         <HardShadow style={styles.stamp} pointerEvents="none">
-          <Text style={styles.stampText}>DONE ✓</Text>
+          <Text style={styles.stampText}>{framing.doneStamp}</Text>
         </HardShadow>
       )}
       <View style={[styles.emojiBox, { backgroundColor: lightTint }]}>
@@ -78,10 +85,17 @@ export function TrackableCard({
           <View style={[styles.pill, { backgroundColor: tint }]}>
             <Text style={styles.pillText}>{trackable.difficulty}</Text>
           </View>
+          {framing.pill && (
+            <View style={styles.reducePill}>
+              <Text style={styles.reducePillText}>{framing.pill}</Text>
+            </View>
+          )}
           <View style={styles.scheduleBadge}>
             <Text style={styles.scheduleText}>{schedule}</Text>
           </View>
-          <Text style={styles.streakText}>🔥 {status.streak}</Text>
+          <Text style={styles.streakText}>
+            {framing.streakEmoji} {status.streak}
+          </Text>
           {status.periodProgress && (
             <View style={styles.progressBadge}>
               <Text style={styles.progressText}>
@@ -101,9 +115,11 @@ export function TrackableCard({
         <Text style={styles.payout}>+{payoutCoins(trackable)}🪙</Text>
         <HardShadow
           style={[styles.checkBtn, status.isDoneToday && styles.checkBtnDone]}
-          onPress={(e) => onToggleComplete(e.nativeEvent.pageX, e.nativeEvent.pageY)}
-          disabled={completing}
-          aria-label={status.isDoneToday ? `Undo ${trackable.name}` : `Complete ${trackable.name}`}
+          onPress={
+            status.isDoneToday ? undefined : (e) => onToggleComplete(e.nativeEvent.pageX, e.nativeEvent.pageY)
+          }
+          disabled={completing || status.isDoneToday}
+          aria-label={status.isDoneToday ? `${trackable.name} done` : `Complete ${trackable.name}`}
         >
           <Check
             size={20}
@@ -196,6 +212,22 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.paper,
   },
   scheduleText: { fontSize: 11, fontWeight: "600", color: theme.color.ink, fontFamily: fonts.display600 },
+  reducePill: {
+    borderWidth: 2,
+    borderColor: theme.color.ink,
+    borderRadius: 7,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    backgroundColor: LIGHT_VIOLET,
+  },
+  reducePillText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: theme.color.violet,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    fontFamily: fonts.mono700,
+  },
   streakText: { fontSize: 12, fontWeight: "700", color: theme.color.fire, fontFamily: fonts.mono700 },
   progressBadge: {
     borderWidth: 2,

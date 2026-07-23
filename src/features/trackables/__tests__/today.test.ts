@@ -10,9 +10,11 @@ function trackable(overrides: Partial<Trackable>): Trackable {
     emoji: "🎯",
     difficulty: "easy",
     coinValue: 10,
+    goalType: "build",
     period: "day",
     quota: 1,
     weekdays: null,
+    dueOn: null,
     archivedAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -34,9 +36,16 @@ describe("filterDueToday", () => {
     expect(filterDueToday([mwf], "2026-01-07")).toContainEqual(mwf); // Wed: scheduled
   });
 
-  it("always includes tasks regardless of weekday", () => {
-    const task = trackable({ id: "task", kind: "task", weekdays: null, period: null });
+  it("always includes an unscheduled task (dueOn null) regardless of weekday", () => {
+    const task = trackable({ id: "task", kind: "task", weekdays: null, period: null, dueOn: null });
     expect(filterDueToday([task], "2026-01-06")).toContainEqual(task);
+  });
+
+  it("hides a future-dated task until its scheduled day, then shows it (including overdue)", () => {
+    const task = trackable({ id: "sched", kind: "task", period: null, dueOn: "2026-01-10" });
+    expect(filterDueToday([task], "2026-01-08")).not.toContainEqual(task); // before: hidden
+    expect(filterDueToday([task], "2026-01-10")).toContainEqual(task); // on the day: shown
+    expect(filterDueToday([task], "2026-01-12")).toContainEqual(task); // after (overdue, not done): still shown
   });
 
   it("always includes week/month-quota habits regardless of weekday", () => {

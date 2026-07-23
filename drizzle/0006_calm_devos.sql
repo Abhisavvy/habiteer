@@ -1,0 +1,1 @@
+ALTER TABLE "trackables" ADD COLUMN "due_on" date;

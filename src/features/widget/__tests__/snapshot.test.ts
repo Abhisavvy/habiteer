@@ -12,6 +12,8 @@ function trackable(overrides: Partial<Trackable>): Trackable {
     emoji: "🎯",
     difficulty: "easy",
     coinValue: 10,
+    goalType: "build",
+    dueOn: null,
     period: "day",
     quota: 1,
     weekdays: null,

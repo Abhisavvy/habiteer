@@ -27,10 +27,13 @@ import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { HardShadow } from "@/components/HardShadow";
 import { useProfileQuery } from "@/features/profile/useProfile";
 import { avatarColorFor, cardSkinFor } from "@/features/cosmetics/catalog";
+import { useProfileQuery } from "@/features/profile/useProfile";
+import { avatarColorFor, cardSkinFor } from "@/features/cosmetics/catalog";
 
 type PanelState = { mode: "add" } | { mode: "edit"; trackable: Trackable } | null;
 
 export default function Home() {
+  const { data: profile } = useProfileQuery();
   const { data: trackables, isLoading, error } = useTrackablesQuery();
   const { data: completions } = useCompletionsQuery();
   const { data: profile } = useProfileQuery();
@@ -68,13 +71,12 @@ export default function Home() {
       setAddHandler(() => setPanel({ mode: "add" }));
       return () => setAddHandler(null);
     }, [setAddHandler])
-  );
-
-  const handleToggleComplete = (t: Trackable, isDoneToday: boolean, anchor: { x: number; y: number }) => {
-    if (isDoneToday) {
-    completeMutation.mutate(t.id, {
-      onSuccess: (result) => {
+    // A done card is locked for the day — undo is only via the transient
+    // toast below, never by tapping the card again.
+    if (isDoneToday) return;
         if (result.xp > 0) spawn(result.xp, anchor);
+        const leveledUp = lastKnownLevel.current !== null && result.level.level > lastKnownLevel.current;
+        // Level-up gets its own celebratory cue; otherwise the completion cue.
         const leveledUp = lastKnownLevel.current !== null && result.level.level > lastKnownLevel.current;
         // Level-up gets its own celebratory cue; otherwise the completion cue.
         if (leveledUp) {
@@ -83,7 +85,9 @@ export default function Home() {
         }
         lastKnownLevel.current = result.level.level;
         lastKnownFreeze.current = result.freezeTokens;
-        if (t.kind === "task") setUndoToastFor(t);
+        // Every completion (habit or task) gets the transient undo toast;
+        // once it dismisses the completion is locked for the day.
+        setUndoToastFor(t);
       },
       onError: (e: Error) => Alert.alert("Couldn't complete that", e.message),
     });
@@ -111,6 +115,10 @@ export default function Home() {
             aria-label="Open profile"
           >
             <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={avatarColorFor(profile?.avatarColor).textColor} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+            onPress={() => router.navigate("/profile")}
+            aria-label="Open profile"
+          >
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={avatarColorFor(profile?.avatarColor).textColor} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
               <Circle cx="12" cy="8" r="4" />
               <Path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
             </Svg>
@@ -130,6 +138,7 @@ export default function Home() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {isLoading && <ActivityIndicator style={{ marginTop: 40 }} />}
         {error && <Text style={styles.error}>Couldn't load your habits. Pull to retry.</Text>}
+            doneVerb={undoToastFor.goalType === "reduce" ? "Resisted" : "Done"}
 
         {undoToastFor && (
           <UndoToast

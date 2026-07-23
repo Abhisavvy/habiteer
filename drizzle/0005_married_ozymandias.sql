@@ -1,0 +1,1 @@
+ALTER TABLE "trackables" ADD COLUMN "goal_type" text DEFAULT 'build' NOT NULL;

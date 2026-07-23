@@ -6,8 +6,20 @@ import { fonts } from "@/constants/fonts";
 import { defaultCoinValue } from "@/features/gamification/coins";
 import type { Difficulty } from "@/features/gamification/constants";
 import { DIFF_TINT, DIFF_LIGHT_TINT } from "../constants";
+import { today } from "../today";
 import type { Trackable } from "../api";
 import type { TrackableFormValues } from "../schemas";
+
+/** Shift an ISO date (YYYY-MM-DD) by whole days, UTC-anchored to match today(). */
+function shiftISO(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDue(iso: string): string {
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+}
 
 const EMOJI_CHOICES = ["🏃", "💧", "📖", "🧘", "🥗", "💪", "😴"];
 const DIFFICULTIES: { value: Difficulty; label: string }[] = [
@@ -44,6 +56,8 @@ export function TrackablePanel({
   const [emoji, setEmoji] = useState(initial?.emoji ?? EMOJI_CHOICES[0]);
   const [difficulty, setDifficulty] = useState<Difficulty>(initial?.difficulty ?? "medium");
   const [coinValue, setCoinValue] = useState(initial?.coinValue ?? defaultCoinValue("medium"));
+  const [goalType, setGoalType] = useState<"build" | "reduce">(initial?.goalType ?? "build");
+  const [dueOn, setDueOn] = useState<string | null>(initial?.dueOn ?? null);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(
     initial?.period === "week"
       ? "weekly"
@@ -89,9 +103,11 @@ export function TrackablePanel({
       emoji,
       difficulty,
       coinValue,
+      goalType: kind === "habit" ? goalType : "build",
       weekdays: kind === "habit" && scheduleMode === "specific" ? weekdays : null,
       period: kind === "task" ? null : scheduleMode === "weekly" ? "week" : scheduleMode === "monthly" ? "month" : "day",
       quota: kind === "habit" && isRecurrence ? Number(quota) || 1 : 1,
+      dueOn: kind === "task" ? dueOn : null,
     });
   };
 
@@ -173,8 +189,64 @@ export function TrackablePanel({
           </View>
         </View>
 
+        {kind === "task" && (
+          <View style={styles.row}>
+            <Text style={styles.label}>When</Text>
+            <View style={styles.segmented}>
+              {(
+                [
+                  { id: "anytime", label: "Anytime", value: null },
+                  { id: "today", label: "Today", value: today() },
+                  { id: "tomorrow", label: "Tomorrow", value: shiftISO(today(), 1) },
+                  { id: "week", label: "In a week", value: shiftISO(today(), 7) },
+                ] as const
+              ).map((p) => (
+                <Pressable
+                  key={p.id}
+                  style={[styles.segment, dueOn === p.value && styles.segmentSelected]}
+                  onPress={() => setDueOn(p.value)}
+                >
+                  <Text style={[styles.segmentText, dueOn === p.value && styles.segmentTextSelected]}>{p.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {dueOn && (
+              <View style={styles.dueRow}>
+                <Pressable
+                  style={styles.stepperBtn}
+                  onPress={() => setDueOn((d) => shiftISO(d ?? today(), -1))}
+                  disabled={dueOn <= today()}
+                >
+                  <Text style={[styles.stepperBtnText, dueOn <= today() && styles.stepperBtnTextDisabled]}>−</Text>
+                </Pressable>
+                <Text style={styles.dueDateText}>{formatDue(dueOn)}</Text>
+                <Pressable style={styles.stepperBtn} onPress={() => setDueOn((d) => shiftISO(d ?? today(), 1))}>
+                  <Text style={styles.stepperBtnText}>＋</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
+
         {kind === "habit" && (
           <>
+            <View style={styles.row}>
+              <Text style={styles.label}>Goal</Text>
+              <View style={styles.segmented}>
+                {(["build", "reduce"] as const).map((g) => (
+                  <Pressable
+                    key={g}
+                    style={[styles.segment, goalType === g && styles.segmentSelected]}
+                    onPress={() => setGoalType(g)}
+                  >
+                    <Text style={[styles.segmentText, goalType === g && styles.segmentTextSelected]}>
+                      {g === "build" ? "Build a habit" : "Break a habit"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
             <View style={styles.row}>
               <Text style={styles.label}>Coins</Text>
               <View style={styles.stepper}>
@@ -234,6 +306,7 @@ export function TrackablePanel({
             </View>
           </>
         )}
+
       </HardShadow>
 
       <View style={styles.actionsRow}>
@@ -353,7 +426,28 @@ const styles = StyleSheet.create({
   },
   stepperBtn: { width: 36, height: 40, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
   stepperBtnText: { fontWeight: "700", fontSize: 18, color: theme.color.ink, fontFamily: fonts.display700 },
+  stepperBtnTextDisabled: { color: "rgba(26,21,35,0.25)" },
   stepperValue: { width: 50, textAlign: "center", fontWeight: "700", fontSize: 15, color: theme.color.ink, fontFamily: fonts.mono700 },
+  dueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderWidth: 2.5,
+    borderColor: theme.color.ink,
+    borderRadius: 10,
+    backgroundColor: theme.color.paper,
+    overflow: "hidden",
+    marginTop: 8,
+  },
+  dueDateText: {
+    minWidth: 130,
+    textAlign: "center",
+    fontWeight: "700",
+    fontSize: 14,
+    color: theme.color.ink,
+    fontFamily: fonts.mono700,
+    paddingHorizontal: 8,
+  },
   weekdayRow: { flexDirection: "row", gap: 6, justifyContent: "space-between" },
   weekdayBtn: {
     flex: 1,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { AppState, Platform } from "react-native";
 import { Stack, Redirect, useSegments } from "expo-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { useAuth } from "@/features/auth/useAuth";
@@ -18,6 +19,9 @@ export default function RootLayout() {
 
   useEffect(() => init(), []);
 
+  // Load persisted sound/haptics preferences into the feedback module's cache
+  // once, so playback checks stay synchronous on the completion hot path.
+  useEffect(() => {
   useEffect(() => {
     if (ready && fontsLoaded) SplashScreen.hideAsync().catch(() => {});
   }, [ready, fontsLoaded]);

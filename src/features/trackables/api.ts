@@ -8,9 +8,11 @@ export type Trackable = {
   emoji: string;
   difficulty: "easy" | "medium" | "hard";
   coinValue: number;
+  goalType: "build" | "reduce";
   period: "day" | "week" | "month" | null;
   quota: number;
   weekdays: number[] | null;
+  dueOn: string | null;
   archivedAt: string | null;
   createdAt: string;
 };
@@ -24,9 +26,11 @@ function mapRow(row: Record<string, unknown>): Trackable {
     emoji: row.emoji as string,
     difficulty: row.difficulty as Trackable["difficulty"],
     coinValue: row.coin_value as number,
+    goalType: (row.goal_type as Trackable["goalType"]) ?? "build",
     period: row.period as Trackable["period"],
     quota: row.quota as number,
     weekdays: row.weekdays as number[] | null,
+    dueOn: (row.due_on as string | null) ?? null,
     archivedAt: row.archived_at as string | null,
     createdAt: row.created_at as string,
   };
@@ -56,9 +60,11 @@ export async function createTrackable(values: TrackableFormValues): Promise<Trac
       emoji: parsed.emoji,
       difficulty: parsed.difficulty,
       coin_value: parsed.coinValue,
+      goal_type: parsed.goalType,
       period: parsed.period,
       quota: parsed.quota,
       weekdays: parsed.weekdays,
+      due_on: parsed.dueOn,
     })
     .select()
     .single();
@@ -73,9 +79,11 @@ export async function updateTrackable(id: string, values: TrackableUpdateValues)
   if (parsed.emoji !== undefined) patch.emoji = parsed.emoji;
   if (parsed.difficulty !== undefined) patch.difficulty = parsed.difficulty;
   if (parsed.coinValue !== undefined) patch.coin_value = parsed.coinValue;
+  if (parsed.goalType !== undefined) patch.goal_type = parsed.goalType;
   if (parsed.weekdays !== undefined) patch.weekdays = parsed.weekdays;
   if (parsed.period !== undefined) patch.period = parsed.period;
   if (parsed.quota !== undefined) patch.quota = parsed.quota;
+  if (parsed.dueOn !== undefined) patch.due_on = parsed.dueOn;
 
   const { data, error } = await supabase.from("trackables").update(patch).eq("id", id).select().single();
   if (error) throw error;

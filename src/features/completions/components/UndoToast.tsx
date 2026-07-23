@@ -7,7 +7,17 @@ import { useReduceMotion } from "@/hooks/useReduceMotion";
 
 /** Brief "Done · {name} — UNDO" snackbar shown after completing a task, since it
  * archives and leaves the list immediately — there's no card left to tap. */
-export function UndoToast({ name, onUndo, onDismiss }: { name: string; onUndo: () => void; onDismiss: () => void }) {
+export function UndoToast({
+  name,
+  onUndo,
+  onDismiss,
+  doneVerb = "Done",
+}: {
+  name: string;
+  onUndo: () => void;
+  onDismiss: () => void;
+  doneVerb?: string;
+}) {
   const reduceMotion = useReduceMotion();
   const translateY = useRef(new Animated.Value(20)).current;
   const fade = useRef(new Animated.Value(0)).current;
@@ -48,7 +58,7 @@ export function UndoToast({ name, onUndo, onDismiss }: { name: string; onUndo: (
         <Check size={14} strokeWidth={3.5} color={theme.color.ink} />
       </View>
       <Text style={styles.text} numberOfLines={1}>
-        Done · {name}
+        {doneVerb} · {name}
       </Text>
       <Pressable
         onPress={() => {

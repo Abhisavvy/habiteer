@@ -12,7 +12,9 @@ import type { Trackable } from "./api";
 export function filterDueToday(trackables: Trackable[], onDate: ISODate): Trackable[] {
   const todayWeekday = weekday(onDate);
   return trackables.filter((t) => {
-    if (t.kind === "task") return true;
+    // Tasks: an unscheduled task (dueOn null) is always due; a scheduled one
+    // is hidden until its day, then stays due (incl. overdue) until done.
+    if (t.kind === "task") return t.dueOn == null || t.dueOn <= onDate;
     if (t.period !== "day") return true;
     const scheduled = t.weekdays && t.weekdays.length > 0 ? t.weekdays : null;
     return scheduled === null || scheduled.includes(todayWeekday);
