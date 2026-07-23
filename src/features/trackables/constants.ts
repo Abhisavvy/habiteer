@@ -29,6 +29,6 @@ export function reductionFraming(goalType: "build" | "reduce"): {
   pill: string | null;
 } {
   return goalType === "reduce"
-    ? { doneStamp: "RESISTED ✓", streakEmoji: "🛡️", pill: "REDUCE" }
-    : { doneStamp: "DONE ✓", streakEmoji: "🔥", pill: null };
+    ? { doneStamp: "RESISTED!", streakEmoji: "🛡️", pill: "REDUCE" }
+    : { doneStamp: "DONE!", streakEmoji: "🔥", pill: null };
 }

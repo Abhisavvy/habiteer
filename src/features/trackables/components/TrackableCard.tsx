@@ -14,7 +14,6 @@ const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function scheduleLabel(t: Trackable): string {
   if (t.kind !== "habit") {
-    // Scheduled task: show its day (e.g. "Jul 30") unless it's today.
     if (t.dueOn && t.dueOn !== today()) {
       return new Date(t.dueOn + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
     }
@@ -27,11 +26,9 @@ function scheduleLabel(t: Trackable): string {
     .slice()
     .sort((a, b) => a - b)
     .map((d) => WEEKDAY_LABELS[d])
-    .join(" · ");
+    .join("·");
 }
 
-/** Coin payout for completing right now — matches the design's per-card
- * preview, which shows only the coin payout, not XP (XP lives in the level bar). */
 function payoutCoins(t: Trackable): number {
   return t.kind === "task" ? taskCoins(t.difficulty) : t.coinValue;
 }
@@ -51,7 +48,6 @@ export function TrackableCard({
   onArchive: () => void;
   onToggleComplete: (pageX: number, pageY: number) => void;
   completing?: boolean;
-  /** Account-wide equipped card skin background; defaults to the plain white card. */
   skinBg?: string;
 }) {
   const tint = DIFF_TINT[trackable.difficulty];
@@ -60,6 +56,7 @@ export function TrackableCard({
   const framing = reductionFraming(trackable.goalType);
   const projectedStreak = status.isDoneToday ? status.streak : status.streak + 1;
   const projectedCombo = comboMultiplier(projectedStreak);
+  const pillOnInk = trackable.difficulty === "medium"; // gold pill → ink text; ember/jade → white
 
   return (
     <HardShadow style={[styles.card, skinBg ? { backgroundColor: skinBg } : null, status.isDoneToday && styles.cardDone]}>
@@ -87,7 +84,7 @@ export function TrackableCard({
         </View>
         <View style={styles.metaRow}>
           <View style={[styles.pill, { backgroundColor: tint }]}>
-            <Text style={styles.pillText}>{trackable.difficulty}</Text>
+            <Text style={[styles.pillText, pillOnInk ? styles.pillTextInk : styles.pillTextLight]}>{trackable.difficulty}</Text>
           </View>
           {framing.pill && (
             <View style={styles.reducePill}>
@@ -98,13 +95,13 @@ export function TrackableCard({
             <Text style={styles.scheduleText}>{schedule}</Text>
           </View>
           <Text style={styles.streakText}>
-            {framing.streakEmoji} {status.streak}
+            {framing.streakEmoji}
+            {status.streak}
           </Text>
           {status.periodProgress && (
             <View style={styles.progressBadge}>
               <Text style={styles.progressText}>
-                {status.periodProgress.completed}/{status.periodProgress.quota}{" "}
-                {trackable.period === "week" ? "this wk" : "this mo"}
+                {status.periodProgress.completed}/{status.periodProgress.quota} {trackable.period === "week" ? "wk" : "mo"}
               </Text>
             </View>
           )}
@@ -119,154 +116,124 @@ export function TrackableCard({
         <Text style={styles.payout}>+{payoutCoins(trackable)}🪙</Text>
         <HardShadow
           style={[styles.checkBtn, status.isDoneToday && styles.checkBtnDone]}
-          onPress={
-            status.isDoneToday ? undefined : (e) => onToggleComplete(e.nativeEvent.pageX, e.nativeEvent.pageY)
-          }
+          onPress={status.isDoneToday ? undefined : (e) => onToggleComplete(e.nativeEvent.pageX, e.nativeEvent.pageY)}
           disabled={completing || status.isDoneToday}
           aria-label={status.isDoneToday ? `${trackable.name} done` : `Complete ${trackable.name}`}
         >
-          <Check
-            size={20}
-            strokeWidth={3.4}
-            color={status.isDoneToday ? theme.color.ink : "rgba(26,21,35,0.28)"}
-          />
+          <Check size={22} strokeWidth={3.6} color={status.isDoneToday ? "#fff" : "rgba(36,27,51,0.3)"} />
         </HardShadow>
       </View>
     </HardShadow>
   );
 }
 
+const INK = theme.color.ink;
 const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 13,
+    gap: 11,
     backgroundColor: theme.color.card,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: theme.radius,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 16,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
     position: "relative",
     overflow: "visible",
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 5, height: 5 },
+    shadowColor: INK,
+    shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 5,
+    elevation: 4,
   },
-  cardDone: { opacity: 0.62 },
+  cardDone: { opacity: 0.72 },
   stamp: {
     position: "absolute",
     top: -11,
-    left: 14,
-    backgroundColor: theme.color.jade,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
+    left: 12,
+    backgroundColor: theme.color.success,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
     borderRadius: 8,
     paddingHorizontal: 9,
-    paddingVertical: 2,
+    paddingVertical: 1,
     transform: [{ rotate: "-7deg" }],
     zIndex: 5,
-    shadowColor: theme.color.ink,
+    shadowColor: INK,
     shadowOffset: { width: 2, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 4,
   },
-  stampText: { fontSize: 12, fontWeight: "800", color: "#fff", letterSpacing: 1, fontFamily: fonts.display700 },
+  stampText: { fontSize: 13, color: "#fff", letterSpacing: 1, fontFamily: fonts.heading },
   nameDone: { textDecorationLine: "line-through" },
   emojiBox: {
-    width: 50,
-    height: 50,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: 12,
+    width: 46,
+    height: 46,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
-  emoji: { fontSize: 26 },
+  emoji: { fontSize: 23 },
   body: { flex: 1, minWidth: 0 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  name: { fontWeight: "600", fontSize: 16, color: theme.color.ink, flexShrink: 1, fontFamily: fonts.display600 },
+  name: { fontWeight: "700", fontSize: 15, color: INK, flexShrink: 1, fontFamily: fonts.display700 },
   actions: { flexDirection: "row", gap: 4 },
   iconBtn: { width: 24, height: 24, alignItems: "center", justifyContent: "center", borderRadius: 6 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" },
-  pill: {
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 7,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  pillText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: theme.color.ink,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    fontFamily: fonts.mono700,
-  },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 5, flexWrap: "wrap" },
+  pill: { borderWidth: theme.borders.hairline, borderColor: INK, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
+  pillText: { fontSize: 9, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3, fontFamily: fonts.display700 },
+  pillTextInk: { color: INK },
+  pillTextLight: { color: "#fff" },
   scheduleBadge: {
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 7,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    borderWidth: theme.borders.hairline,
+    borderColor: INK,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
     backgroundColor: theme.color.paper,
   },
-  scheduleText: { fontSize: 11, fontWeight: "600", color: theme.color.ink, fontFamily: fonts.display600 },
+  scheduleText: { fontSize: 10, fontWeight: "600", color: INK, fontFamily: fonts.display600 },
   reducePill: {
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 7,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    borderWidth: theme.borders.hairline,
+    borderColor: theme.color.hero,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
     backgroundColor: LIGHT_VIOLET,
   },
-  reducePillText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: theme.color.violet,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    fontFamily: fonts.mono700,
-  },
-  streakText: { fontSize: 12, fontWeight: "700", color: theme.color.fire, fontFamily: fonts.mono700 },
+  reducePillText: { fontSize: 9, fontWeight: "800", color: theme.color.hero, textTransform: "uppercase", letterSpacing: 0.3, fontFamily: fonts.display700 },
+  streakText: { fontSize: 11, fontWeight: "700", color: theme.color.ember, fontFamily: fonts.mono700 },
   progressBadge: {
-    borderWidth: 2,
-    borderColor: theme.color.ink,
-    borderRadius: 7,
+    borderWidth: theme.borders.hairline,
+    borderColor: INK,
+    borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 1,
-    backgroundColor: theme.color.yellow,
+    backgroundColor: theme.color.gold,
   },
-  progressText: { fontSize: 11, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.mono700 },
-  comboBadge: {
-    borderWidth: 2,
-    borderColor: theme.color.violet,
-    borderRadius: 7,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    backgroundColor: LIGHT_VIOLET,
-  },
-  comboText: { fontSize: 11, fontWeight: "700", color: theme.color.violet, fontFamily: fonts.mono700 },
-  checkCol: { alignItems: "center", gap: 7, flexShrink: 0 },
-  payout: { fontSize: 13, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.mono700 },
+  progressText: { fontSize: 10, fontWeight: "700", color: INK, fontFamily: fonts.mono700 },
+  comboBadge: { borderWidth: theme.borders.hairline, borderColor: theme.color.hero, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1, backgroundColor: LIGHT_VIOLET },
+  comboText: { fontSize: 10, fontWeight: "700", color: theme.color.hero, fontFamily: fonts.mono700 },
+  checkCol: { alignItems: "center", gap: 5, flexShrink: 0 },
+  payout: { fontSize: 12, fontWeight: "700", color: INK, fontFamily: fonts.mono700 },
   checkBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: theme.borders.standard,
+    borderColor: INK,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fff",
-    shadowColor: theme.color.ink,
+    shadowColor: INK,
     shadowOffset: { width: 2, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 3,
   },
-  checkBtnDone: { backgroundColor: theme.color.jade, shadowOpacity: 0, elevation: 0 },
+  checkBtnDone: { backgroundColor: theme.color.success, shadowOpacity: 0, elevation: 0 },
 });
