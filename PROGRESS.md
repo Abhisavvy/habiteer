@@ -1448,6 +1448,49 @@ same mechanic time-boxed to a date window.
     the banner — acceptable now; can consolidate in the upcoming redesign.
   - Device test pending (needs airplane-mode to simulate offline).
 
+## v2 front-end overhaul — P2 "Questlight" comic-RPG (done)
+Full visual/UX overhaul to the user's Claude-Design "Habiteer P2 — Screens"
+deliverable (Direction A · palette-1 "Questlight" · type-3 "Action Panel":
+Bangers headers, Space Grotesk body, Space Mono numbers · icon-A "Evolved-H" ·
+mascot Ember). Every value pulled from the deliverable's live DOM, not eyeballed.
+Local commits `b061990` (foundations) → `224700b` (card + level bar) →
+`242f0d6` (all screens) → `e2548c9` (icon) → `5e9bd09` (widget).
+
+- **Foundations**: `constants/theme.ts` repointed to Questlight tokens (+ semantic
+  hero/gold/ember/success/info/danger, `on{}`, radii/borders/depth); `fonts.ts`
+  adds Bangers; new `components/Ember.tsx` (mascot) + `components/Halftone.tsx`
+  (dot-grid ground, react-native-svg).
+- **Every screen rebuilt element-by-element to the mocks** — Today (Ember tile,
+  Bangers wordmark, coin/freeze chips, halftone, level banner, DONE!/RESISTED!
+  cards), **BottomHUD** (floating ink island, solid-gold filled house active
+  tab, exact icon set, ember "+" in a center well), Rewards (light-violet emoji
+  tiles, ember cost, locked treatment, inline dashed +Add), Board ("LEAGUE"
+  banner + numbered square-avatar rows + promotion/relegation zones), Profile
+  (centered avatar tile + LVL·title pill + 2×2 stat grid), Groups (JOIN A PARTY
+  panel + dashed create; detail: ember streak banner, invite+Share, member
+  rows), Stats (ember/success record cards, coin bar chart, per-habit bars),
+  Cosmetics, modals (Bangers titles + color-coded buttons), overlays (level-up
+  hero card + Ember, undo ink bar, redeem burst), panels + sign-in.
+- **App icon** "Evolved-H" via committable `scripts/gen-icon.js` (dependency-free
+  PNG encoder + 4× supersample); regenerates icon + adaptive fg/bg/monochrome;
+  widget-icon plugin copies it into the widget on prebuild.
+- **Widget** rebuilt to the "Today 4×2" mock (paper card, app-icon header +
+  "TODAY · N/M" + streak + coins, checkbox rows); dropped the crash-prone
+  OverlapWidget clock; added `doneToday`/`totalDue` to the snapshot (TDD).
+- **Two product decisions with the user**: HUD keeps Groups as the 4th tab
+  (Profile via the header Ember tile); avatars stay initial-letter (recolored),
+  not Ember; inline dashed add buttons kept alongside the floating "+"; widget
+  header uses the app icon (not Ember).
+- **Verification**: `tsc` clean throughout; suite **139 passing** (same 3 known
+  `rpc.test.ts` drift). Device-verified (2026-07-24): HUD/Today/Rewards/Board/
+  Profile/Groups/Stats/Cosmetics screenshots, the Evolved-H launcher icon, and
+  the widget (dark variant). Not screenshotted (MIUI blocks `adb input`): the
+  add/edit sheet + sign-in (tsc/pattern-verified only).
+- **Known follow-up**: Groups *list* card shows the invite code, not
+  "🔥streak · N members" — the list query lacks those (they live on the detail
+  query); surfacing them needs a small query extension. RemoteViews widget
+  limits (no custom font/shadow/strikethrough) are inherent, stated in-file.
+
 ## Bugs / blockers
 - Phases 12 & 13 device verification pending (user deferring); v3
   reminders/sound + Gap #3 group-streak ARE device-verified. Quests device
