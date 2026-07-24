@@ -24,6 +24,10 @@ export type WidgetSnapshot = {
   coinBalance: number;
   topStreak: number;
   moreCount: number;
+  /** Done / total due today — drives the "TODAY · N/M" header (counts all due
+   * items, not just the capped visible rows). */
+  doneToday: number;
+  totalDue: number;
 };
 
 /** Small serializable summary the widget renders from — capped, no scrolling. */
@@ -57,6 +61,8 @@ export function buildWidgetSnapshot(
     coinBalance,
     topStreak,
     moreCount: Math.max(0, dueToday.length - maxRows),
+    doneToday: withStatus.filter(({ status }) => status.isDoneToday).length,
+    totalDue: dueToday.length,
   };
 }
 
@@ -78,21 +84,17 @@ export function capSnapshotRows(snapshot: WidgetSnapshot, maxRows: number): Widg
   };
 }
 
-// HabitWidget.tsx's chrome that isn't a habit row: outer padding, the peeking
-// clock card (CLOCK_PEEK_DP — the main card's marginTop, since the clock card
-// itself sits behind and only its uncovered sliver adds real height), the main
-// card's own padding, the header row (icon + title + coins), the divider, and
-// the footer row — everything that costs height regardless of item count.
-// Kept as an explicit constant (not a guessed bucket) so a header/padding/
-// clock tweak can't silently make the real layout taller than this function
-// assumes — which is exactly what clipped rows off the widget twice already
-// (once with no clock, once after the clock came back with too tight a
-// margin). Padded well above the line-by-line sum (40 clock peek + 12 outer
-// padding + 16 card padding + 22 header row + 2 divider + 22 footer ≈ 114) —
-// text line-height and font metrics never come out exactly as guessed, and
+// HabitWidget.tsx's chrome that isn't a habit row: the card's own padding
+// (12 top + bottom), the header row (28dp icon tile + 8 padding-bottom + 9
+// margin-bottom), and the header divider (2). The P2 mock dropped the peeking
+// clock card, so that height is gone. Kept as an explicit constant (not a
+// guessed bucket) so a header/padding tweak can't silently make the real
+// layout taller than this assumes — which clipped rows off the widget twice
+// before. Padded above the line-by-line sum (24 padding + 45 header + 2
+// divider ≈ 71) since text metrics never land exactly as guessed, and
 // under-filling by a few dp of empty space is far cheaper than clipping.
-const FIXED_CHROME_DP = 135;
-const ROW_HEIGHT_DP = 34;
+const FIXED_CHROME_DP = 82;
+const ROW_HEIGHT_DP = 32;
 const MAX_ROWS_SHOWN = 6;
 
 /** No scrolling, so a bigger widget just shows more rows — sized to what

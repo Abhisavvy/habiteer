@@ -6,7 +6,7 @@ import { completeTrackable } from "@/features/completions/api";
 
 export const WIDGET_NAME = "HabitWidget";
 
-const EMPTY_SNAPSHOT: WidgetSnapshot = { items: [], coinBalance: 0, topStreak: 0, moreCount: 0 };
+const EMPTY_SNAPSHOT: WidgetSnapshot = { items: [], coinBalance: 0, topStreak: 0, moreCount: 0, doneToday: 0, totalDue: 0 };
 
 /**
  * Runs in a headless JS context that can't assume the app's in-memory state

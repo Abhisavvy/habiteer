@@ -89,6 +89,14 @@ describe("buildWidgetSnapshot", () => {
     expect(b?.isDone).toBe(false);
   });
 
+  it("counts done/total due today for the header, over all due items (not just visible rows)", () => {
+    const trackables = [trackable({ id: "a" }), trackable({ id: "b" }), trackable({ id: "c" })];
+    const completions = [completion({ trackableId: "a", completedOn: TODAY })];
+    const snap = buildWidgetSnapshot(trackables, completions, 0, TODAY, 1); // cap to 1 visible row
+    expect(snap.doneToday).toBe(1);
+    expect(snap.totalDue).toBe(3);
+  });
+
   it("computes topStreak across habits, ignoring tasks (which never have a streak)", () => {
     const trackables = [
       trackable({ id: "a", createdAt: "2025-01-01T00:00:00Z" }),
@@ -125,8 +133,8 @@ describe("capSnapshotRows", () => {
 describe("rowsForHeight", () => {
   it("shows more rows for a taller widget", () => {
     expect(rowsForHeight(80)).toBe(1);
-    expect(rowsForHeight(150)).toBe(1);
-    expect(rowsForHeight(220)).toBe(2);
-    expect(rowsForHeight(300)).toBe(4);
+    expect(rowsForHeight(150)).toBe(2);
+    expect(rowsForHeight(220)).toBe(4);
+    expect(rowsForHeight(300)).toBe(6);
   });
 });
