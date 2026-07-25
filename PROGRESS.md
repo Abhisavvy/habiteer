@@ -1135,13 +1135,97 @@ real **library-level** defects:
    script so it survives `npm install`.
 - `tsc` clean; `vitest` 146/149 (same 3 known drift failures); debug APK
   **built successfully** with the patched native code (`gradlew
-  :app:assembleDebug`, BUILD SUCCESSFUL). **Device install + a real tap
-  test (watch logcat for the COMPLETE_TRACKABLE broadcast reaching the
-  server) is the one remaining gate** — the phone disconnected mid-round,
-  so install/verify + commit are pending its return.
-- **Not committed** — pending device verification of the tap, then a
-  commit+push covering this whole widget round (mock-match + click fix)
-  was explicitly requested.
+  :app:assembleDebug`, BUILD SUCCESSFUL).
+- **Device-verified after the phone reconnected**: installed the patched
+  APK, watched a live logcat capture through a real tap. The tap fired a
+  widget re-render (not `OPEN_APP`) and, crucially, tapping "Exercise"
+  specifically completed **only** Exercise — confirmed visually (its row
+  alone flipped to green-check on the widget) and confirmed server-side by
+  reopening the app and seeing the same real data (coins 398→448, exactly
+  Exercise's +50 payout; streak 2→3). Rules out all three failure modes at
+  once: doesn't open the app, doesn't misfire onto a different habit,
+  reaches the server.
+- **Committed and pushed** (`3636cc4` app-icon tuning, `2e6876f` widget
+  suite + click fix) — `09920b0..2e6876f` on `main`.
+
+## Motion & haptics — Phase M1: the three ★ marquee animations (done)
+Resumed PLAN.md's motion/haptics track: the P2 design's "08 Motion &
+Haptics" section specs ~16 animations + a haptic map; decided (via
+AskUserQuestion) to build **animations + haptics only** (the §08 section
+has no sound catalog, and the 3 existing sound cues — complete/redeem/
+level-up, already wired end-to-end through `feedback.ts` — cover what the
+spec actually asks for) in **independently-committable phases, marquee
+moments first**.
+
+- A prior infrastructure survey found the haptic/sound side of all three ★
+  moments was already fully wired (`feedbackComplete`/`feedbackLevelUp` in
+  `app/(tabs)/index.tsx`'s completion handler, `feedbackRedeem` in
+  `rewards.tsx`) — **this phase is purely the visual choreography**, no
+  changes to that orchestration.
+- New **`src/components/Confetti.tsx`**: a hand-rolled RN `Animated` burst
+  (14 chips, deterministic fan-out — no `Math.random`, so a chip's path is
+  stable across re-renders — using the app's own theme colors), gated on
+  `useReduceMotion()` (renders nothing when on). Generic, so later phases
+  (quest claim, streak milestone) can reuse it rather than each rolling
+  their own.
+- **Habit complete ★** (`TrackableCard.tsx`, ~900ms): the not-done→done
+  *edge* now animates — check scale-in (spring) → card dims to 0.72 via
+  `HardShadow`'s `animatedStyle` (one composited fade, not per-child,
+  avoiding the shadow-bleed bug fixed earlier this project) → the DONE!/
+  RESISTED! stamp springs in. A card that *mounts* already-done (e.g. the
+  list re-rendering after a refetch) skips straight to the final state —
+  only a genuine live completion animates. Reduce-motion: same instant
+  landing. RN can't animate a stroke-draw or `textDecorationLine`, so the
+  check "draws" via scale and the strikethrough just appears at the dim
+  beat — stated limitation, not glossed over.
+- **Level-up ★** (`LevelUpOverlay.tsx`, ~1400ms): was previously just a
+  parallel spring+fade. Rebuilt as the spec's real stage sequence: scrim
+  fades in → card springs in (unchanged) → `Confetti` bursts → the Ember
+  mascot pops (scale+rotate spring). Reduce-motion: static card, no
+  confetti, no mascot pop — matches the spec's own stated fallback.
+- **Redeem burst ★** (`RedeemSuccessOverlay.tsx`, ~1000ms): was fully
+  static (a card + a bare `setTimeout`) with a comment claiming "no real
+  sound/haptic yet" that was already stale (haptics/sound have worked
+  since an earlier phase — only the visual was static). Rebuilt: card
+  spring-in → the existing `Halftone` "rays" layer scales/rotates up →
+  several 🪙 chips arc outward (new local `CoinBurst`, same technique as
+  `Confetti` but a shorter upward fan) → settles. Kept the ~1500ms
+  auto-dismiss unchanged. Removed the stale comment.
+- `npx tsc --noEmit` clean; `vitest` 146/149 (unchanged — this phase is
+  pure view animation, no new tested logic).
+- **Device-verified for crashes/correctness, honest about a real limit on
+  frame-level proof**: fresh Metro + relaunch confirmed via bundle-content
+  grep. Two live taps (habit-complete ×2 via the Today screen, redeem ×1)
+  all completed cleanly — no crash, no JS red-box in logcat, and the
+  server-side numbers matched exactly (coins 448→504 on the two habit
+  completions, 504→4 on the reward redeem). What I could **not** capture:
+  a genuine mid-animation frame. Sequential `adb exec-out screencap`
+  round-trips over USB take longer than these animations' own duration, so
+  every capture landed on the settled final state, not mid-sequence — a
+  real tooling limit, not a claim that the animations were skipped.
+  Separately tried to verify the reduce-motion fallback path directly via
+  `adb shell settings put global transition_animation_scale 0` (the exact
+  setting RN's Android `AccessibilityInfo.isReduceMotionEnabled()` reads,
+  confirmed by reading `AccessibilityInfoModule.kt`) — blocked by
+  `SecurityException: must have WRITE_SECURE_SETTINGS`, this ROM's shell
+  can't write the `global` namespace. (Accidentally set the unrelated
+  `system`-namespace animator scales to 0 while investigating; reverted
+  them immediately after.) The reduce-motion branches in all three
+  components are simple, direct `.setValue()` calls following the exact
+  pattern already device-verified in this codebase (`FloatingXp`,
+  `UndoToast`, the original `LevelUpOverlay` spring) — high confidence
+  from code review, but not live-confirmed this round. A manual spot-check
+  (Settings → toggle "Remove animations" → repeat the three actions) is
+  the natural follow-up if that confidence isn't enough on its own.
+- **Deferred to later phases** (stated in the plan, not silently dropped):
+  M2 — haptic map completion (LIGHT on buttons/tabs/steppers, MEDIUM on
+  primary actions, WARNING on errors/insufficient-coins/delete-confirm).
+  M3 — pervasive motion polish (button squash-press, XP-bar/coin-counter
+  tween, modal slide-up, card-list stagger, tab cross-fade). M4 — smaller
+  touches (field-error shake, empty-state idle bob, cosmetic-equip morph,
+  quest-claim coins-fly, FloatingXp's straight float → true arc-to-bar,
+  splash timing tune to the spec's 1200ms).
+- **Committed** (`440ef4f`).
 
 ## Phase 9 — Gamified stats page (done)
 "Move to next phase" resumed PLAN.md §13's numbered v2 roadmap where it

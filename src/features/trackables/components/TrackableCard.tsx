@@ -1,10 +1,12 @@
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { useEffect, useRef } from "react";
+import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
 import { Pencil, X, Check } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { taskCoins } from "@/features/gamification/coins";
 import { comboMultiplier } from "@/features/gamification/combo";
+import { useReduceMotion } from "@/hooks/useReduceMotion";
 import { DIFF_TINT, DIFF_LIGHT_TINT, LIGHT_VIOLET, reductionFraming } from "../constants";
 import { today } from "../today";
 import type { Trackable } from "../api";
@@ -58,10 +60,49 @@ export function TrackableCard({
   const projectedCombo = comboMultiplier(projectedStreak);
   const pillOnInk = trackable.difficulty === "medium"; // gold pill → ink text; ember/jade → white
 
+  // Habit-complete ★ animation (P2 §08, ~900ms): on the not-done→done edge,
+  // the check pops, the card dims, then the DONE! stamp springs in. Only the
+  // *transition* animates — a card that mounts already-done, or reduce-motion,
+  // lands on the final state instantly. `dim` replaces the static cardDone
+  // opacity so the whole card fades as one composited unit (via HardShadow's
+  // animatedStyle), not per-child (which would bleed the shadow through).
+  const reduceMotion = useReduceMotion();
+  const isDone = status.isDoneToday;
+  const dim = useRef(new Animated.Value(isDone ? 0.72 : 1)).current;
+  const checkScale = useRef(new Animated.Value(1)).current;
+  const stampScale = useRef(new Animated.Value(isDone ? 1 : 0)).current;
+  const prevDone = useRef(isDone);
+
+  useEffect(() => {
+    const wasDone = prevDone.current;
+    prevDone.current = isDone;
+    if (isDone === wasDone) return; // no edge (ordinary re-render)
+    if (!isDone) {
+      // Un-done (day reset / undo): snap back to the actionable state.
+      dim.setValue(1);
+      checkScale.setValue(1);
+      stampScale.setValue(0);
+      return;
+    }
+    if (reduceMotion) {
+      dim.setValue(0.72);
+      checkScale.setValue(1);
+      stampScale.setValue(1);
+      return;
+    }
+    checkScale.setValue(0);
+    stampScale.setValue(0);
+    Animated.sequence([
+      Animated.spring(checkScale, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }),
+      Animated.timing(dim, { toValue: 0.72, duration: 250, useNativeDriver: true }),
+      Animated.spring(stampScale, { toValue: 1, friction: 5, tension: 150, useNativeDriver: true }),
+    ]).start();
+  }, [isDone, reduceMotion]);
+
   return (
-    <HardShadow style={[styles.card, skinBg ? { backgroundColor: skinBg } : null, status.isDoneToday && styles.cardDone]}>
+    <HardShadow style={[styles.card, skinBg ? { backgroundColor: skinBg } : null]} animatedStyle={{ opacity: dim }}>
       {status.isDoneToday && (
-        <HardShadow style={styles.stamp} pointerEvents="none">
+        <HardShadow style={styles.stamp} animatedStyle={{ transform: [{ scale: stampScale }, { rotate: "-7deg" }] }} pointerEvents="none">
           <Text style={styles.stampText}>{framing.doneStamp}</Text>
         </HardShadow>
       )}
@@ -120,7 +161,9 @@ export function TrackableCard({
           disabled={completing || status.isDoneToday}
           aria-label={status.isDoneToday ? `${trackable.name} done` : `Complete ${trackable.name}`}
         >
-          <Check size={22} strokeWidth={3.6} color={status.isDoneToday ? "#fff" : "rgba(36,27,51,0.3)"} />
+          <Animated.View style={{ transform: [{ scale: checkScale }] }}>
+            <Check size={22} strokeWidth={3.6} color={status.isDoneToday ? "#fff" : "rgba(36,27,51,0.3)"} />
+          </Animated.View>
         </HardShadow>
       </View>
     </HardShadow>
@@ -147,7 +190,6 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 4,
   },
-  cardDone: { opacity: 0.72 },
   stamp: {
     position: "absolute",
     top: -11,
