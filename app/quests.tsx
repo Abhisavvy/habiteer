@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
+import { Confetti } from "@/components/Confetti";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useCompletionsQuery } from "@/features/completions/useCompletions";
@@ -11,6 +13,8 @@ import { questCopy } from "@/features/quests/catalog";
 import { today } from "@/features/trackables/today";
 import { weekStart } from "@/features/gamification/dates";
 
+const CLAIM_CONFETTI_MS = 900;
+
 function daysLeft(untilISO: string, todayISO: string): number {
   return Math.round((Date.parse(untilISO + "T00:00:00Z") - Date.parse(todayISO + "T00:00:00Z")) / 86400000);
 }
@@ -19,6 +23,7 @@ export default function Quests() {
   const { data: completions, isLoading } = useCompletionsQuery();
   const { data: claims } = useQuestClaimsQuery();
   const claimMutation = useClaimQuest();
+  const [justClaimed, setJustClaimed] = useState<string | null>(null);
 
   const todayStr = today();
   const week = weekStart(todayStr);
@@ -26,7 +31,13 @@ export default function Quests() {
   const claimedThisWeek = new Set((claims ?? []).filter((c) => c.week === week).map((c) => c.questId));
 
   const onClaim = (questId: string) => {
-    claimMutation.mutate(questId, { onError: (e: Error) => Alert.alert("Couldn't claim that", e.message) });
+    claimMutation.mutate(questId, {
+      onSuccess: () => {
+        setJustClaimed(questId);
+        setTimeout(() => setJustClaimed(null), CLAIM_CONFETTI_MS);
+      },
+      onError: (e: Error) => Alert.alert("Couldn't claim that", e.message),
+    });
   };
 
   return (
@@ -51,6 +62,7 @@ export default function Quests() {
             const left = quest.activeUntil ? daysLeft(quest.activeUntil, todayStr) : 0;
             return (
               <HardShadow key={quest.id} style={[styles.card, isEvent && styles.cardEvent]}>
+                {quest.id === justClaimed && <Confetti count={12} duration={CLAIM_CONFETTI_MS - 100} />}
                 <View style={styles.cardTop}>
                   <Text style={styles.emoji}>{copy.emoji}</Text>
                   <View style={{ flex: 1 }}>

@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from "re
 import { router } from "expo-router";
 import { ArrowLeft, Lock, Check } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
+import { EquipPop } from "@/components/EquipPop";
 import { Halftone } from "@/components/Halftone";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
@@ -45,21 +46,22 @@ export default function Cosmetics() {
                 const locked = level < c.level;
                 const equipped = equippedColor === c.id;
                 return (
-                  <HardShadow
-                    key={c.id}
-                    style={[styles.swatch, { backgroundColor: c.hex }, equipped && styles.swatchEquipped]}
-                    onPress={locked ? undefined : () => equip("avatarColor", c.id)}
-                    disabled={locked || equipMutation.isPending}
-                  >
-                    {locked ? (
-                      <View style={styles.swatchOverlay}>
-                        <Lock size={16} strokeWidth={2.5} color="#fff" />
-                        <Text style={styles.swatchLockLabel}>LVL {c.level}</Text>
-                      </View>
-                    ) : equipped ? (
-                      <Check size={20} strokeWidth={3} color={c.textColor} />
-                    ) : null}
-                  </HardShadow>
+                  <EquipPop key={c.id} equipped={equipped}>
+                    <HardShadow
+                      style={[styles.swatch, { backgroundColor: c.hex }, equipped && styles.swatchEquipped]}
+                      onPress={locked ? undefined : () => equip("avatarColor", c.id)}
+                      disabled={locked || equipMutation.isPending}
+                    >
+                      {locked ? (
+                        <View style={styles.swatchOverlay}>
+                          <Lock size={16} strokeWidth={2.5} color="#fff" />
+                          <Text style={styles.swatchLockLabel}>LVL {c.level}</Text>
+                        </View>
+                      ) : equipped ? (
+                        <Check size={20} strokeWidth={3} color={c.textColor} />
+                      ) : null}
+                    </HardShadow>
+                  </EquipPop>
                 );
               })}
             </View>
@@ -70,24 +72,25 @@ export default function Cosmetics() {
                 const locked = level < t.level;
                 const equipped = equippedTitle === t.id;
                 return (
-                  <HardShadow
-                    key={t.id}
-                    style={[styles.titleRow, equipped && styles.titleRowEquipped]}
-                    onPress={locked ? undefined : () => equip("title", t.id)}
-                    disabled={locked || equipMutation.isPending}
-                  >
-                    <Text style={[styles.titleLabel, locked && styles.titleLabelLocked]}>{t.label}</Text>
-                    {locked ? (
-                      <View style={styles.titleLockBadge}>
-                        <Lock size={12} strokeWidth={2.5} color={theme.color.ink} />
-                        <Text style={styles.titleLockText}>LVL {t.level}</Text>
-                      </View>
-                    ) : equipped ? (
-                      <Text style={styles.titleEquippedText}>Equipped ✓</Text>
-                    ) : (
-                      <Text style={styles.titleEquipHint}>Tap to equip</Text>
-                    )}
-                  </HardShadow>
+                  <EquipPop key={t.id} equipped={equipped}>
+                    <HardShadow
+                      style={[styles.titleRow, equipped && styles.titleRowEquipped]}
+                      onPress={locked ? undefined : () => equip("title", t.id)}
+                      disabled={locked || equipMutation.isPending}
+                    >
+                      <Text style={[styles.titleLabel, locked && styles.titleLabelLocked]}>{t.label}</Text>
+                      {locked ? (
+                        <View style={styles.titleLockBadge}>
+                          <Lock size={12} strokeWidth={2.5} color={theme.color.ink} />
+                          <Text style={styles.titleLockText}>LVL {t.level}</Text>
+                        </View>
+                      ) : equipped ? (
+                        <Text style={styles.titleEquippedText}>Equipped ✓</Text>
+                      ) : (
+                        <Text style={styles.titleEquipHint}>Tap to equip</Text>
+                      )}
+                    </HardShadow>
+                  </EquipPop>
                 );
               })}
             </View>
@@ -98,24 +101,25 @@ export default function Cosmetics() {
                 const locked = level < s.level;
                 const equipped = equippedSkin === s.id;
                 return (
-                  <HardShadow
-                    key={s.id}
-                    style={[styles.skinSwatch, { backgroundColor: s.bg }, equipped && styles.swatchEquipped]}
-                    onPress={locked ? undefined : () => equip("cardSkin", s.id)}
-                    disabled={locked || equipMutation.isPending}
-                  >
-                    {locked ? (
-                      <View style={styles.swatchOverlay}>
-                        <Lock size={16} strokeWidth={2.5} color="#fff" />
-                        <Text style={styles.swatchLockLabel}>LVL {s.level}</Text>
-                      </View>
-                    ) : (
-                      <>
-                        <Text style={styles.skinLabel}>{s.label}</Text>
-                        {equipped && <Check size={16} strokeWidth={3} color={theme.color.ink} />}
-                      </>
-                    )}
-                  </HardShadow>
+                  <EquipPop key={s.id} equipped={equipped}>
+                    <HardShadow
+                      style={[styles.skinSwatch, { backgroundColor: s.bg }, equipped && styles.swatchEquipped]}
+                      onPress={locked ? undefined : () => equip("cardSkin", s.id)}
+                      disabled={locked || equipMutation.isPending}
+                    >
+                      {locked ? (
+                        <View style={styles.swatchOverlay}>
+                          <Lock size={16} strokeWidth={2.5} color="#fff" />
+                          <Text style={styles.swatchLockLabel}>LVL {s.level}</Text>
+                        </View>
+                      ) : (
+                        <>
+                          <Text style={styles.skinLabel}>{s.label}</Text>
+                          {equipped && <Check size={16} strokeWidth={3} color={theme.color.ink} />}
+                        </>
+                      )}
+                    </HardShadow>
+                  </EquipPop>
                 );
               })}
             </View>

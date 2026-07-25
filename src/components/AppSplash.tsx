@@ -67,13 +67,20 @@ export function AppSplash({ onDone }: { onDone: () => void }) {
       return () => clearTimeout(t);
     }
 
+    // Tuned to land near the spec's 1200ms total (was ~700-800ms): slower
+    // leg rise + stagger, a slightly slower cap spring, and an explicit hold
+    // before the fade so the finished mark registers for a beat instead of
+    // starting to fade the instant it settles. Approximate, not measured —
+    // a spring's exact settle time isn't analytically predictable, and
+    // there's no device in this session to time it live.
     Animated.sequence([
-      Animated.stagger(90, [
-        Animated.timing(leftScale, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        Animated.timing(rightScale, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.stagger(130, [
+        Animated.timing(leftScale, { toValue: 1, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(rightScale, { toValue: 1, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       ]),
-      Animated.spring(capScale, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true }),
-      Animated.timing(fade, { toValue: 0, duration: 200, delay: 150, useNativeDriver: true }),
+      Animated.spring(capScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
+      Animated.delay(180),
+      Animated.timing(fade, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]).start(({ finished }) => finished && onDone());
   }, [reduceMotion]);
 

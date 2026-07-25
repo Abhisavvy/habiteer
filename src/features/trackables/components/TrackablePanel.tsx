@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, ScrollView } from "react-native";
+import { useRef, useState } from "react";
+import { View, Text, TextInput, Pressable, Animated, StyleSheet, ScrollView } from "react-native";
 import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
@@ -9,6 +9,16 @@ import { DIFF_TINT, DIFF_LIGHT_TINT } from "../constants";
 import { today } from "../today";
 import type { Trackable } from "../api";
 import type { TrackableFormValues } from "../schemas";
+import { getReduceMotionCached } from "@/hooks/useReduceMotion";
+import { feedbackMedium, feedbackWarning } from "@/features/feedback/feedback";
+
+/** A short back-and-forth shake — the field-error feedback for an invalid submit. */
+function shake(anim: Animated.Value): void {
+  if (getReduceMotionCached() !== false) return;
+  Animated.sequence(
+    [-10, 8, -6, 4, 0].map((toValue) => Animated.timing(anim, { toValue, duration: 55, useNativeDriver: true }))
+  ).start();
+}
 
 /** Shift an ISO date (YYYY-MM-DD) by whole days, UTC-anchored to match today(). */
 function shiftISO(iso: string, days: number): string {
@@ -125,8 +135,15 @@ export function TrackablePanel({
       (scheduleMode === "specific" && weekdays.length > 0) ||
       (isRecurrence && Number(quota) > 0 && hasRecurrenceLevel));
 
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+
   const submit = () => {
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      feedbackWarning();
+      shake(shakeAnim);
+      return;
+    }
+    feedbackMedium();
     onSubmit({
       kind,
       name: name.trim(),
@@ -153,7 +170,7 @@ export function TrackablePanel({
         </Pressable>
       </View>
 
-      <HardShadow style={styles.panel}>
+      <HardShadow style={styles.panel} animatedStyle={{ transform: [{ translateX: shakeAnim }] }}>
         <View style={styles.row}>
           <Text style={styles.label}>Name</Text>
           <TextInput
@@ -373,8 +390,9 @@ export function TrackablePanel({
         </HardShadow>
         <HardShadow
           style={[styles.primaryBtn, !canSubmit && styles.primaryBtnDisabled]}
-          disabled={!canSubmit || submitting}
+          disabled={submitting}
           onPress={submit}
+          haptic="none"
         >
           <Text style={styles.primaryText}>{mode === "add" ? `Save ${kind}` : "Save"}</Text>
         </HardShadow>
