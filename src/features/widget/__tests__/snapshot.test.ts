@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildWidgetSnapshot, capSnapshotRows, rowsForHeight, rowsForHeightExpanded } from "../snapshot";
 import { taskCoins } from "@/features/gamification/coins";
 import { overallProgress } from "@/features/completions/derived";
+import { questCopy } from "@/features/quests/catalog";
 import type { Trackable } from "@/features/trackables/api";
 import type { Completion } from "@/features/completions/api";
 
@@ -33,6 +34,8 @@ function completion(overrides: Partial<Completion>): Completion {
     xpEarned: 10,
     coinsEarned: 10,
     streakAfter: 1,
+    freezeSpent: 0,
+    freezeGranted: 0,
     ...overrides,
   };
 }
@@ -116,6 +119,34 @@ describe("buildWidgetSnapshot", () => {
     const trackables = [trackable({ id: "a" })];
     expect(buildWidgetSnapshot(trackables, [], 0, TODAY, 5).displayName).toBe("");
     expect(buildWidgetSnapshot(trackables, [], 0, TODAY, 5, "Alex").displayName).toBe("Alex");
+  });
+
+  it("computes featuredQuest from the real weekly quest data (title/emoji via questCopy)", () => {
+    const trackables = [trackable({ id: "a" })];
+    // 5 distinct active days meets "steady" (active_days goal 5).
+    const completions = ["2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09", TODAY].map((d) =>
+      completion({ completedOn: d })
+    );
+    const snap = buildWidgetSnapshot(trackables, completions, 0, TODAY, 5);
+    const copy = questCopy({ id: "steady", metric: "active_days", goal: 5, reward: 30 });
+    expect(snap.featuredQuest?.title).toBe(copy.title);
+    expect(snap.featuredQuest?.emoji).toBe(copy.emoji);
+    expect(snap.featuredQuest?.progress).toBe(5);
+    expect(snap.featuredQuest?.goal).toBe(5);
+    expect(snap.featuredQuest?.met).toBe(true);
+    expect(snap.featuredQuest?.claimed).toBe(false);
+  });
+
+  it("marks featuredQuest claimed once every active quest is claimed (the last-resort fallback)", () => {
+    const trackables = [trackable({ id: "a" })];
+    const completions = ["2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09", TODAY].map((d) =>
+      completion({ completedOn: d })
+    );
+    // All windowless catalog quests claimed — a still-met-but-claimed quest
+    // is only ever featured as a genuine last resort (see featuredQuestStatus).
+    const claims = ["busy_bee", "steady", "coin_rush"].map((questId) => ({ questId, week: "2026-01-05" }));
+    const snap = buildWidgetSnapshot(trackables, completions, 0, TODAY, 5, "", claims);
+    expect(snap.featuredQuest?.claimed).toBe(true);
   });
 
   it("computes topStreak across habits, ignoring tasks (which never have a streak)", () => {

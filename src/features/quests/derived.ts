@@ -43,3 +43,37 @@ export function questStatus(quest: QuestDef, completions: Completion[], today: I
 export function activeQuestStatuses(completions: Completion[], today: ISODate): QuestStatus[] {
   return QUESTS.map((q) => questStatus(q, completions, today)).filter((s) => s.active);
 }
+
+export type FeaturedQuest = QuestStatus & { claimed: boolean };
+
+/**
+ * The single quest to feature where there's only room for one (the
+ * compact widget): an unclaimed quest that's already met — the most
+ * exciting state, ready to claim — beats one still in progress; among
+ * quests still in progress, the one closest to its own goal (by fraction,
+ * not raw count, so a 3/5 and a 40/200 quest compare fairly) wins. A
+ * claimed quest is only ever shown as a last resort, if literally nothing
+ * else is active. `null` when no quest is active at all (not reachable
+ * with today's catalog — busy_bee/steady/coin_rush have no window — but
+ * kept correct rather than assumed).
+ */
+export function featuredQuestStatus(
+  completions: Completion[],
+  claims: { questId: string; week: ISODate }[],
+  today: ISODate
+): FeaturedQuest | null {
+  const week = weekStart(today);
+  const claimedIds = new Set(claims.filter((c) => c.week === week).map((c) => c.questId));
+  const statuses: FeaturedQuest[] = activeQuestStatuses(completions, today).map((s) => ({
+    ...s,
+    claimed: claimedIds.has(s.quest.id),
+  }));
+  if (statuses.length === 0) return null;
+
+  const unclaimedMet = statuses.filter((s) => s.met && !s.claimed);
+  if (unclaimedMet.length > 0) return unclaimedMet[0];
+
+  const unclaimed = statuses.filter((s) => !s.claimed);
+  const pool = unclaimed.length > 0 ? unclaimed : statuses;
+  return pool.reduce((best, s) => (s.progress / s.goal > best.progress / best.goal ? s : best));
+}

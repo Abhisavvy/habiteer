@@ -36,6 +36,7 @@ const EMPTY_SNAPSHOT: WidgetSnapshot = {
   intoLevel: 0,
   need: 1,
   displayName: "",
+  featuredQuest: null,
 };
 
 /** Only the two Today variants are list-based and need row-capping to the

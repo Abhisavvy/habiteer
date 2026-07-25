@@ -4,6 +4,8 @@ import type { Completion } from "@/features/completions/api";
 import { taskCoins } from "@/features/gamification/coins";
 import { filterDueToday } from "@/features/trackables/today";
 import { trackableStatus, overallProgress } from "@/features/completions/derived";
+import { featuredQuestStatus } from "@/features/quests/derived";
+import { questCopy } from "@/features/quests/catalog";
 import { DAILY_STRIP_BANNER_HEIGHT, TODAY_BANNER_HEIGHT } from "./palette";
 
 export type WidgetSnapshotItem = {
@@ -38,6 +40,18 @@ export type WidgetSnapshot = {
    * defaults to "" so every existing call site (tests, the compact/
    * Companion/Streak widgets) doesn't need to pass it. */
   displayName: string;
+  /** The real weekly quest to feature (see `featuredQuestStatus`) — `null`
+   * only if literally no quest is active, not reachable with today's
+   * catalog but kept correct rather than assumed. */
+  featuredQuest: {
+    title: string;
+    emoji: string;
+    progress: number;
+    goal: number;
+    reward: number;
+    met: boolean;
+    claimed: boolean;
+  } | null;
 };
 
 /** Small serializable summary the widget renders from — capped, no scrolling. */
@@ -47,7 +61,8 @@ export function buildWidgetSnapshot(
   coinBalance: number,
   today: ISODate,
   maxRows: number,
-  displayName: string = ""
+  displayName: string = "",
+  questClaims: { questId: string; week: ISODate }[] = []
 ): WidgetSnapshot {
   const dueToday = filterDueToday(trackables, today);
 
@@ -69,6 +84,19 @@ export function buildWidgetSnapshot(
 
   const { level, intoLevel, need } = overallProgress(completions);
 
+  const featured = featuredQuestStatus(completions, questClaims, today);
+  const featuredQuest = featured
+    ? {
+        title: questCopy(featured.quest).title,
+        emoji: questCopy(featured.quest).emoji,
+        progress: featured.progress,
+        goal: featured.goal,
+        reward: featured.quest.reward,
+        met: featured.met,
+        claimed: featured.claimed,
+      }
+    : null;
+
   return {
     items,
     coinBalance,
@@ -80,6 +108,7 @@ export function buildWidgetSnapshot(
     intoLevel,
     need,
     displayName,
+    featuredQuest,
   };
 }
 

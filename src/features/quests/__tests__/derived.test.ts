@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { questMetricValue, questStatus, activeQuestStatuses } from "../derived";
+import { questMetricValue, questStatus, activeQuestStatuses, featuredQuestStatus } from "../derived";
 import type { QuestDef } from "@/features/gamification/constants";
 import type { Completion } from "@/features/completions/api";
 
@@ -11,6 +11,8 @@ function comp(overrides: Partial<Completion>): Completion {
     xpEarned: 10,
     coinsEarned: 10,
     streakAfter: 1,
+    freezeSpent: 0,
+    freezeGranted: 0,
     ...overrides,
   };
 }
@@ -79,5 +81,39 @@ describe("activeQuestStatuses", () => {
     const statuses = activeQuestStatuses([], "2026-09-01");
     expect(statuses.map((s) => s.quest.id)).not.toContain("weekend_warrior");
     expect(statuses.map((s) => s.quest.id)).toContain("busy_bee");
+  });
+});
+
+describe("featuredQuestStatus", () => {
+  // TODAY/WEEK_START (defined above) are outside weekend_warrior's window
+  // (2026-07-20..27), so only busy_bee (goal 15), steady (goal 5
+  // active_days), coin_rush (goal 200 coins) are ever active here.
+
+  it("features an unclaimed quest that's already met, over one still in progress", () => {
+    // Piled on one day: meets busy_bee (15 completions) but NOT steady
+    // (only 1 distinct active day) — unambiguous which one is "met".
+    const completions = Array.from({ length: 15 }, () => comp({ completedOn: "2026-01-06", coinsEarned: 1 }));
+    const featured = featuredQuestStatus(completions, [], TODAY);
+    expect(featured?.quest.id).toBe("busy_bee");
+    expect(featured?.met).toBe(true);
+    expect(featured?.claimed).toBe(false);
+  });
+
+  it("skips a met-but-already-claimed quest, featuring the next best instead", () => {
+    const completions = Array.from({ length: 15 }, () => comp({ completedOn: "2026-01-06", coinsEarned: 1 }));
+    const featured = featuredQuestStatus(completions, [{ questId: "busy_bee", week: WEEK_START }], TODAY);
+    expect(featured?.quest.id).not.toBe("busy_bee");
+  });
+
+  it("features the active quest closest to its own goal when none are met", () => {
+    // steady: 3 distinct active days / 5 goal = 0.6. coin_rush: 40/200 = 0.2. busy_bee: 3/15 = 0.2.
+    const completions = [
+      comp({ completedOn: "2026-01-05", coinsEarned: 20 }),
+      comp({ completedOn: "2026-01-06", coinsEarned: 20 }),
+      comp({ completedOn: "2026-01-07", coinsEarned: 0 }),
+    ];
+    const featured = featuredQuestStatus(completions, [], TODAY);
+    expect(featured?.quest.id).toBe("steady");
+    expect(featured?.met).toBe(false);
   });
 });

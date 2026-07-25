@@ -3,6 +3,7 @@ import { requestWidgetUpdate } from "react-native-android-widget";
 import { useTrackablesQuery } from "@/features/trackables/useTrackables";
 import { useCompletionsQuery, useCoinBalanceQuery } from "@/features/completions/useCompletions";
 import { useProfileQuery } from "@/features/profile/useProfile";
+import { useQuestClaimsQuery } from "@/features/quests/useQuests";
 import { today } from "@/features/trackables/today";
 import { buildWidgetSnapshot, capSnapshotRows, rowsForHeight, rowsForHeightExpanded, PERSIST_MAX_ROWS } from "./snapshot";
 import { saveSnapshot } from "./storage";
@@ -23,11 +24,20 @@ export function useWidgetSync() {
   const { data: completions } = useCompletionsQuery();
   const { data: coinBalance } = useCoinBalanceQuery();
   const { data: profile } = useProfileQuery();
+  const { data: questClaims } = useQuestClaimsQuery();
 
   useEffect(() => {
     if (!trackables || !completions || coinBalance === undefined) return;
 
-    const snapshot = buildWidgetSnapshot(trackables, completions, coinBalance, today(), PERSIST_MAX_ROWS, profile?.displayName ?? "");
+    const snapshot = buildWidgetSnapshot(
+      trackables,
+      completions,
+      coinBalance,
+      today(),
+      PERSIST_MAX_ROWS,
+      profile?.displayName ?? "",
+      questClaims ?? []
+    );
     saveSnapshot(snapshot);
 
     requestWidgetUpdate({
@@ -65,5 +75,5 @@ export function useWidgetSync() {
       widgetName: WIDGET_NAMES.QUEST,
       renderWidget: () => ({ light: <QuestWidget snapshot={snapshot} />, dark: <QuestWidget snapshot={snapshot} dark /> }),
     });
-  }, [trackables, completions, coinBalance, profile]);
+  }, [trackables, completions, coinBalance, profile, questClaims]);
 }
