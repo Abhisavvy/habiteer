@@ -1,24 +1,48 @@
-import { View, Text, StyleSheet } from "react-native";
+import { useEffect, useRef } from "react";
+import { View, Text, Animated, StyleSheet } from "react-native";
 import { HardShadow } from "@/components/HardShadow";
 import { Halftone } from "@/components/Halftone";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
+import { getReduceMotionCached } from "@/hooks/useReduceMotion";
 
 /** Comic-RPG level bar (P2): a hero-violet quest banner with a white halftone
  * "sun" wash, a Bangers LVL label in gold, and a gold XP fill. */
 export function LevelBar({ level, intoLevel, need }: { level: number; intoLevel: number; need: number }) {
   const pct = Math.min(100, need > 0 ? (intoLevel / need) * 100 : 100);
+  const fillAnim = useRef(new Animated.Value(pct)).current;
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    if (getReduceMotionCached() !== false) {
+      fillAnim.setValue(pct);
+      return;
+    }
+    Animated.timing(fillAnim, { toValue: pct, duration: 500, useNativeDriver: false }).start();
+  }, [pct, fillAnim]);
+
   return (
     <HardShadow style={styles.card}>
       <Halftone color="#FFFFFF" opacity={0.22} id="levelbar-sun" />
       <View style={styles.row}>
         <Text style={styles.level}>LVL {level}</Text>
         <Text style={styles.xp}>
-          {intoLevel.toLocaleString()} / {need.toLocaleString()} XP
+          <AnimatedNumber value={intoLevel} /> / {need.toLocaleString()} XP
         </Text>
       </View>
       <View style={styles.track}>
-        <View style={[styles.fill, { width: `${pct}%` }, pct >= 100 && styles.fillFull]} />
+        <Animated.View
+          style={[
+            styles.fill,
+            { width: fillAnim.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"], extrapolate: "clamp" }) },
+            pct >= 100 && styles.fillFull,
+          ]}
+        />
       </View>
     </HardShadow>
   );

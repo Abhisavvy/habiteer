@@ -1,14 +1,37 @@
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
-import { HardShadow } from "@/components/HardShadow";
+import { View, Text, Pressable, Animated, StyleSheet } from "react-native";
+import { HardShadow, type HapticKind } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
+import { getReduceMotionCached } from "@/hooks/useReduceMotion";
+
+const SCRIM_FADE_MS = 220;
+const CARD_SPRING = { toValue: 1, useNativeDriver: true, damping: 16, stiffness: 220, mass: 0.9 };
+const EXIT_MS = 180;
+
+// Most concrete modals are conditionally MOUNTED by their parent (`{x &&
+// <FooModal visible .../>}`, e.g. DeleteConfirmModal/RedeemConfirmModal) —
+// there's no `visible: true -> false` prop transition to animate on close,
+// the parent just unmounts the whole tree the instant a button's onPress
+// fires. A couple (SignOutConfirmModal, StreakFreezeExplainerModal) instead
+// stay always-mounted and toggle `visible` on the same instance. This
+// context lets `ModalButton` (and the scrim's tap-to-dismiss) run the shared
+// exit animation FIRST and only THEN invoke the real onPress/onRequestClose
+// — the callback that actually triggers the close, either way — without any
+// of the 6 concrete modals or their screens needing to know this exists.
+const ModalExitContext = createContext<((cb: () => void) => void) | null>(null);
 
 /**
  * Shared modal shell — ink scrim + bordered/shadowed card — replacing
  * scattered Alert.alert() calls. Compose with ModalButton and whatever
  * icon/title/body markup the specific confirmation needs; the shell only
  * owns the scrim, card frame, and dismiss-on-scrim-tap behavior.
+ *
+ * Animates in (scrim fade + card slide-up/spring) on mount and animates out
+ * (via `ModalExitContext`) before any close/confirm actually fires — both
+ * skipped under the OS reduce-motion setting, which snaps straight to the
+ * final state either way.
  */
 export function Modal({
   visible,
@@ -19,13 +42,71 @@ export function Modal({
   onRequestClose: () => void;
   children: ReactNode;
 }) {
-  if (!visible) return null;
+  const reduceMotion = getReduceMotionCached();
+  const scrimAnim = useRef(new Animated.Value(0)).current;
+  const cardAnim = useRef(new Animated.Value(0)).current;
+  // Most of the 6 concrete modals are conditionally MOUNTED (`{x && <Foo
+  // visible .../>}`), so `visible` is a constant `true` for this instance's
+  // whole life. Two (SignOutConfirmModal, StreakFreezeExplainerModal) stay
+  // always-mounted and toggle `visible` on the same instance instead — this
+  // has to handle both: `closed` inits from the CURRENT `visible` so an
+  // already-open always-mounted modal doesn't flash hidden-then-shown, and
+  // the effect below resets it (and replays the entrance) on every
+  // false->true transition, not just first mount.
+  const [closed, setClosed] = useState(!visible);
+
+  useEffect(() => {
+    if (!visible) return;
+    setClosed(false);
+    if (reduceMotion !== false) {
+      scrimAnim.setValue(1);
+      cardAnim.setValue(1);
+      return;
+    }
+    scrimAnim.setValue(0);
+    cardAnim.setValue(0);
+    Animated.timing(scrimAnim, { toValue: 1, duration: SCRIM_FADE_MS, useNativeDriver: true }).start();
+    Animated.spring(cardAnim, CARD_SPRING).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const animateOutThenCall = (cb: () => void) => {
+    if (reduceMotion !== false) {
+      cb();
+      return;
+    }
+    Animated.parallel([
+      Animated.timing(scrimAnim, { toValue: 0, duration: EXIT_MS, useNativeDriver: true }),
+      Animated.timing(cardAnim, { toValue: 0, duration: EXIT_MS, useNativeDriver: true }),
+    ]).start(() => {
+      // Guards against the parent unmounting mid-animation for some other
+      // reason (e.g. navigating away) and this callback firing on a gone tree.
+      setClosed(true);
+      cb();
+    });
+  };
+
+  if (!visible || closed) return null;
+
   return (
-    <Pressable style={styles.scrim} onPress={onRequestClose}>
-      <HardShadow style={styles.card} onPress={(e) => e.stopPropagation()}>
-        {children}
-      </HardShadow>
-    </Pressable>
+    <ModalExitContext.Provider value={animateOutThenCall}>
+      <View style={styles.scrim}>
+        <Animated.View style={[StyleSheet.absoluteFillObject, styles.scrimTint, { opacity: scrimAnim }]} />
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={() => animateOutThenCall(onRequestClose)} />
+        <Animated.View
+          style={{
+            width: "100%",
+            alignItems: "center",
+            opacity: cardAnim,
+            transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
+          }}
+        >
+          <HardShadow style={styles.card} onPress={(e) => e.stopPropagation()} haptic="none">
+            {children}
+          </HardShadow>
+        </Animated.View>
+      </View>
+    </ModalExitContext.Provider>
   );
 }
 
@@ -63,6 +144,18 @@ const VARIANT_STYLE = {
   ink: { backgroundColor: theme.color.ink, color: theme.color.paper, shadowColor: theme.color.ink },
 } as const;
 
+// A variant that commits to a real action (redeem, delete, sign out) gets a
+// weightier MEDIUM haptic; one that just dismisses or acknowledges (cancel,
+// "got it", "keep earning") stays at HardShadow's LIGHT default.
+const VARIANT_HAPTIC: Record<keyof typeof VARIANT_STYLE, HapticKind> = {
+  cancel: "light",
+  fire: "medium",
+  jade: "medium",
+  violet: "light",
+  info: "light",
+  ink: "medium",
+};
+
 export function ModalButton({
   label,
   onPress,
@@ -76,10 +169,12 @@ export function ModalButton({
   full?: boolean;
 }) {
   const v = VARIANT_STYLE[variant];
+  const requestExit = useContext(ModalExitContext);
   return (
     <HardShadow
       style={[styles.button, !full && { flex: 1 }, { backgroundColor: v.backgroundColor, shadowColor: v.shadowColor }]}
-      onPress={onPress}
+      onPress={() => (requestExit ? requestExit(onPress) : onPress())}
+      haptic={VARIANT_HAPTIC[variant]}
     >
       <Text style={[styles.buttonText, { color: v.color }]}>{label}</Text>
     </HardShadow>
@@ -93,12 +188,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(26,21,35,0.72)",
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
     zIndex: 50,
   },
+  scrimTint: { backgroundColor: "rgba(26,21,35,0.72)" },
   card: {
     width: "100%",
     maxWidth: 320,

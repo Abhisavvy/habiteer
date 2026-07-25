@@ -1,6 +1,24 @@
+import { useRef } from "react";
 import type { ReactNode } from "react";
 import { View, Pressable, Animated, StyleSheet } from "react-native";
 import type { StyleProp, ViewStyle, GestureResponderEvent } from "react-native";
+import { feedbackLight, feedbackMedium, feedbackWarning } from "@/features/feedback/feedback";
+import { getReduceMotionCached } from "@/hooks/useReduceMotion";
+
+export type HapticKind = "light" | "medium" | "warning" | "none";
+
+const FIRE_HAPTIC: Record<Exclude<HapticKind, "none">, () => void> = {
+  light: feedbackLight,
+  medium: feedbackMedium,
+  warning: feedbackWarning,
+};
+
+// Created once at module scope — a fresh `createAnimatedComponent` per render
+// would remount the underlying native view on every render, breaking touch.
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+const PRESS_IN_SPRING = { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 0 };
+const PRESS_OUT_SPRING = { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 6 };
 
 /**
  * Drop-in replacement for View/Pressable wherever a style carries
@@ -22,6 +40,18 @@ import type { StyleProp, ViewStyle, GestureResponderEvent } from "react-native";
  * shadow layer bleed through everywhere they overlap (nearly the whole
  * box, not just the offset sliver), washing the whole thing grey instead
  * of fading the finished shadow+content picture as one unit.
+ *
+ * Also the app's one centralized haptic hook: any `onPress` fires a LIGHT
+ * tap-feedback haptic by default (the P2 haptic map's "every button" rule,
+ * applied once here instead of at ~fifty call sites) — override `haptic` to
+ * "medium"/"warning" for a heavier moment, or "none" when `onPress` isn't a
+ * real user action (e.g. a scrim-tap `stopPropagation` guard).
+ *
+ * And the one centralized press animation: a shadowed box springs toward
+ * its own shadow offset on press-in (the classic "button sinks into its
+ * hard shadow" read) and springs back on release; a shadowless box just
+ * scales down slightly instead, since there's no shadow to sink into.
+ * Skipped entirely under the OS reduce-motion setting.
  */
 // Keys about this element's relationship to its SIBLINGS — how much space it
 // claims/skips in the parent's flex flow, and where it sits if positioned.
@@ -64,6 +94,7 @@ export function HardShadow({
   onPress,
   disabled,
   animatedStyle,
+  haptic,
   ...rest
 }: {
   style?: StyleProp<ViewStyle>;
@@ -75,8 +106,23 @@ export function HardShadow({
    * just its children. Forces the wrapper to render as Animated.View. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   animatedStyle?: { opacity?: any; transform?: any };
+  /** Haptic fired on press, before `onPress` runs. Defaults to "light" whenever `onPress` is set. */
+  haptic?: HapticKind;
   [key: string]: unknown;
 }) {
+  const wrappedOnPress = onPress
+    ? (e: GestureResponderEvent) => {
+        const kind = haptic ?? "light";
+        if (kind !== "none") FIRE_HAPTIC[kind]();
+        onPress(e);
+      }
+    : undefined;
+
+  const pressAnim = useRef(new Animated.Value(0)).current;
+  const reduceMotion = getReduceMotionCached();
+  const handlePressIn = () => Animated.spring(pressAnim, PRESS_IN_SPRING).start();
+  const handlePressOut = () => Animated.spring(pressAnim, PRESS_OUT_SPRING).start();
+
   const flat = (StyleSheet.flatten(style) ?? {}) as ViewStyle & {
     shadowColor?: string;
     shadowOffset?: { width: number; height: number };
@@ -86,9 +132,23 @@ export function HardShadow({
   const dy = shadowOffset?.height ?? 0;
 
   if (!shadowColor || (!dx && !dy) || shadowOpacity === 0) {
-    const NoShadowInner = animatedStyle ? Animated.View : onPress ? Pressable : View;
+    // A real Pressable only when nothing else already claims the animated-style
+    // slot — `animatedStyle` (e.g. a card's dim/scale) always wins that slot,
+    // and onPress doesn't actually fire through a plain Animated.View anyway.
+    const canSquash = !!onPress && !animatedStyle && reduceMotion === false;
+    const NoShadowInner = animatedStyle ? Animated.View : onPress ? AnimatedPressable : View;
+    const squashStyle = canSquash
+      ? { transform: [{ scale: pressAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.96] }) }] }
+      : null;
     return (
-      <NoShadowInner style={[rest2, animatedStyle]} onPress={onPress} disabled={disabled} {...rest}>
+      <NoShadowInner
+        style={[rest2, animatedStyle, squashStyle]}
+        onPress={wrappedOnPress}
+        onPressIn={canSquash ? handlePressIn : undefined}
+        onPressOut={canSquash ? handlePressOut : undefined}
+        disabled={disabled}
+        {...rest}
+      >
         {children}
       </NoShadowInner>
     );
@@ -114,12 +174,22 @@ export function HardShadow({
   contentStyle.marginBottom = dy;
 
   const Wrapper = boxOpacity !== undefined || boxTransform !== undefined ? Animated.View : View;
-  const Inner = onPress ? Pressable : View;
+  const Inner = onPress ? AnimatedPressable : View;
   // Without this, RN/Android multiplies opacity down to each child
   // independently instead of flattening shadow+content into one texture
   // first — the shadow would bleed through the whole content box (nearly
   // all of it overlaps the shadow layer), not just the true offset sliver.
   const wrapperProps = boxOpacity !== undefined ? { needsOffscreenAlphaCompositing: true } : {};
+
+  const canSink = !!onPress && reduceMotion === false;
+  const sinkStyle = canSink
+    ? {
+        transform: [
+          { translateX: pressAnim.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },
+          { translateY: pressAnim.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) },
+        ],
+      }
+    : null;
 
   return (
     <Wrapper style={[slotStyle, { opacity: boxOpacity, transform: boxTransform }]} {...wrapperProps}>
@@ -130,7 +200,14 @@ export function HardShadow({
           { top: dy, left: dx, backgroundColor: shadowColor, borderRadius: (contentStyle.borderRadius as number) ?? 0 },
         ]}
       />
-      <Inner style={contentStyle} onPress={onPress} disabled={disabled} {...rest}>
+      <Inner
+        style={[contentStyle, sinkStyle]}
+        onPress={wrappedOnPress}
+        onPressIn={canSink ? handlePressIn : undefined}
+        onPressOut={canSink ? handlePressOut : undefined}
+        disabled={disabled}
+        {...rest}
+      >
         {children}
       </Inner>
     </Wrapper>

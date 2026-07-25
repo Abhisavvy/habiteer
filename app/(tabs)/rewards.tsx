@@ -5,6 +5,7 @@ import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useAddAction } from "@/features/navigation/addAction";
 import { HardShadow } from "@/components/HardShadow";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { Halftone } from "@/components/Halftone";
 import { useCoinBalanceQuery } from "@/features/completions/useCompletions";
 import {
@@ -53,7 +54,9 @@ export default function Rewards() {
       <View style={styles.header}>
         <Text style={styles.title}>REWARDS</Text>
         <HardShadow style={styles.statBadge}>
-          <Text style={styles.statText}>🪙 {balance}</Text>
+          <Text style={styles.statText}>
+            🪙 <AnimatedNumber value={balance} />
+          </Text>
         </HardShadow>
       </View>
 
