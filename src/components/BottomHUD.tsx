@@ -6,6 +6,7 @@ import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useAddAction } from "@/features/navigation/addAction";
+import { feedbackLight } from "@/features/feedback/feedback";
 
 const TABS: { name: string; label: string }[] = [
   { name: "index", label: "Today" },
@@ -113,6 +114,7 @@ export function BottomHUD({ state, navigation }: BottomTabBarProps) {
         key={route.key}
         style={styles.tab}
         onPress={() => {
+          feedbackLight();
           const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
           if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
         }}

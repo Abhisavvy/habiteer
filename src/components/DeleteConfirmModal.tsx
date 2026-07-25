@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { Modal, ModalIcon, ModalTitle, ModalBody, ModalActions, ModalButton } from "@/components/Modal";
+import { feedbackWarning } from "@/features/feedback/feedback";
 
 export function DeleteConfirmModal({
   visible,
@@ -13,6 +15,11 @@ export function DeleteConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  // Fires when the destructive-confirm modal appears — same pattern as ConnectionToast's warning haptic.
+  useEffect(() => {
+    if (visible) feedbackWarning();
+  }, [visible]);
+
   return (
     <Modal visible={visible} onRequestClose={onCancel}>
       <ModalIcon emoji="🗑" badge={{ shape: "rounded", bg: "#FFDBD1" }} />

@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { Modal, ModalIcon, ModalTitle, ModalBody, ModalActions, ModalButton } from "@/components/Modal";
 import { theme } from "@/constants/theme";
+import { feedbackWarning } from "@/features/feedback/feedback";
 
 export function InsufficientFundsModal({
   visible,
@@ -15,6 +17,11 @@ export function InsufficientFundsModal({
   balance: number;
   onClose: () => void;
 }) {
+  // Fires when the blocked-action modal appears — same pattern as ConnectionToast's warning haptic.
+  useEffect(() => {
+    if (visible) feedbackWarning();
+  }, [visible]);
+
   const toGo = Math.max(0, cost - balance);
   const pct = Math.max(0, Math.min(100, (balance / cost) * 100));
   return (

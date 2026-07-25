@@ -81,3 +81,18 @@ export function feedbackLevelUp(): void {
   haptic(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));
   play("levelup");
 }
+
+/** Every ordinary tap — buttons, tabs, chips, steppers. Wired automatically by `HardShadow`'s default. */
+export function feedbackLight(): void {
+  haptic(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
+}
+
+/** A primary/committed action — Save, Redeem confirm, Join group, Delete, Sign out. */
+export function feedbackMedium(): void {
+  haptic(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+}
+
+/** Something needs attention — a blocked action or a risk the user should notice. Same primitive `ConnectionToast` already uses for network errors. */
+export function feedbackWarning(): void {
+  haptic(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
+}

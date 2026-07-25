@@ -91,6 +91,7 @@ export function CreateOrJoinPanel({
           style={[styles.primaryBtn, !(mode === "join" ? canJoin : canCreate) && styles.primaryBtnDisabled]}
           disabled={!(mode === "join" ? canJoin : canCreate) || creating || joining}
           onPress={submit}
+          haptic="medium"
         >
           <Text style={styles.primaryText}>{mode === "join" ? "Join" : "Create"}</Text>
         </HardShadow>
