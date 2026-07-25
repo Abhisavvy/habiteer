@@ -31,6 +31,8 @@ function completion(overrides: Partial<Completion>): Completion {
     xpEarned: 10,
     coinsEarned: 10,
     streakAfter: 1,
+    freezeSpent: 0,
+    freezeGranted: 0,
     ...overrides,
   };
 }

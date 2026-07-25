@@ -82,16 +82,25 @@ export default function Stats() {
             <View style={styles.habitList}>
               {habits.map((t) => {
                 const stats = habitStats(t, allCompletions, todayStr);
-                const period = periodProgress(
-                  allCompletions.filter((c) => c.trackableId === t.id).map((c) => c.completedOn),
-                  (t.period as "week" | "month") ?? "week",
-                  t.quota,
-                  todayStr
-                );
+                // completionRate is only undefined for week/month-period habits
+                // (day-period habits always get one from habitStats) — TrackablePanel
+                // always sets an explicit period for habits (never null), so this branch
+                // is only ever reached for a real "week"|"month" habit. Guarding on that
+                // explicitly rather than `?? "week"` avoids silently mis-scoring a
+                // day/null-period habit against a weekly quota it doesn't have, if that
+                // invariant ever breaks (e.g. a future flow or a data-migration edge case).
+                const period = t.period === "week" || t.period === "month"
+                  ? periodProgress(
+                      allCompletions.filter((c) => c.trackableId === t.id).map((c) => c.completedOn),
+                      t.period,
+                      t.quota,
+                      todayStr
+                    )
+                  : null;
                 const rate =
                   stats.completionRate !== undefined
                     ? stats.completionRate
-                    : period.quota > 0
+                    : period && period.quota > 0
                       ? Math.min(1, period.completed / period.quota)
                       : 0;
                 const pct = Math.round(rate * 100);

@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 /**
- * UI-only preference toggle (sound effects, haptics) persisted locally.
- * No sound/haptic playback is actually wired yet — same "spec now, build
- * later" precedent as the Reminders stub.
+ * Preference toggle (sound effects, haptics, reminders) persisted locally.
+ * Sound/haptics ARE wired to real playback via `src/features/feedback/
+ * feedback.ts` (feedbackComplete/feedbackRedeem/feedbackLevelUp), and
+ * reminders are a fully real scheduling system (`src/features/reminders/`)
+ * — this toggle is the master on/off switch each reads, not a placeholder.
  */
 export function useBoolSetting(key: string, defaultValue: boolean): [boolean, () => void] {
   const storageKey = `settings.${key}`;

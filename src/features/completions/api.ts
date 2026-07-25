@@ -7,6 +7,9 @@ export type Completion = {
   xpEarned: number;
   coinsEarned: number;
   streakAfter: number;
+  /** Freeze tokens spent/granted BY this completion (not the account's running balance) — see `freeze_tokens` in rpc.sql. */
+  freezeSpent: number;
+  freezeGranted: number;
 };
 
 export type CompleteResult = {
@@ -25,6 +28,8 @@ function mapCompletionRow(row: Record<string, unknown>): Completion {
     xpEarned: row.xp_earned as number,
     coinsEarned: row.coins_earned as number,
     streakAfter: row.streak_after as number,
+    freezeSpent: (row.freeze_spent as number) ?? 0,
+    freezeGranted: (row.freeze_granted as number) ?? 0,
   };
 }
 
