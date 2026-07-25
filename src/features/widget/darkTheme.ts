@@ -1,21 +1,21 @@
 /**
- * Widget-only dark palette. Values for bg/card/track/border/accent are taken
- * verbatim from the design's S8 "Dark mode — a peek" mockup (rendered as
- * literal rgb() in its DOM, converted to hex below); semantic colors
- * (yellow/jade/fire) are unchanged, confirmed identical in that same
- * mockup. `doneCard` has no mockup example to lift from (S8 only shows
- * undone rows) — it's an analogous interpolation toward violet, same as
- * how the light widget's own done-tint was never lifted from a specific
- * mockup either (`HabitWidget.tsx`'s existing "approximates the app's
- * look" precedent).
+ * Widget-only dark palette — "Night Patrol", the P2 comic-book mock's own
+ * dark variant (`Habiteer P2 - Screens.dc.html`, "07 WIDGET SUITE" 🌙
+ * section). Values are read verbatim from that mock's inline styles, not
+ * interpolated from the light palette or an older redesign's dark mode
+ * (an earlier version of this file held the *previous* S8 mockup's dark
+ * values, which is a different design pass entirely — confirmed stale by
+ * diffing against the current mock directly).
  */
 export const widgetDark = {
-  bg: "#151021", // page background in the S8 mockup
-  card: "#221B33", // undone row card background
-  doneCard: "#2E2647", // interpolated — no dark done-row example in the mockup
-  track: "#241D33", // check-button (undone) background
-  border: "#F3F0FF", // "ink borders invert to paper" per the mockup's own rationale
-  text: "#F3F0FF",
-  textFaded: "rgba(243,240,255,0.5)",
-  accentViolet: "#A78BFF",
+  ink: "#0C0916", // border/shadow color — the dark analog of theme.color.ink
+  card: "#2E2447", // card fill (both undone + done rows share this in the mock)
+  track: "#1A1526", // check-button (undone) background
+  border: "#0C0916", // card border color in dark mode (same as ink here, not paper)
+  text: "#F4EEDF",
+  textFaded: "rgba(244,238,223,.6)",
+  hero: "#8B63FF",
+  gold: "#FFD23F",
+  ember: "#FF7A4D",
+  success: "#2ADBA0",
 } as const;

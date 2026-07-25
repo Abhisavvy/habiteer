@@ -948,6 +948,201 @@ misses. Final shipped state, after all rounds:
   tcp:8081` and it opened normally. Not a code bug.
 - **Not committed** — no commit/push request for this batch yet.
 
+## Widget suite expansion — 4 widgets instead of 1 (done, device-verified)
+User feedback on the single rebuilt widget above: "Still its not 100% exact
+and you made just one widget and the requirement has multiple" — the P2
+design deliverable's "07 Widget suite" section specifies four distinct
+widgets (Today 4×2, Today 4×4, Companion 2×2, Streak 2×2), not one.
+
+- Extracted shared chrome into `src/features/widget/palette.ts`
+  (`FONT`/`SHADOW_DX`/`SHADOW_DY`/`CARD_RADIUS`/`widgetPalette()`) and
+  `WidgetCardFrame.tsx` (the hard-shadow + halftone/solid-fill + border +
+  padded-content scaffold every widget shares, with an optional
+  `solidFill` prop for Streak's no-halftone card) so the four widgets
+  can't drift apart on shadow/border/font tokens.
+- New `TodayWidgetExpanded.tsx` (Today 4×4 — taller header with LVL +
+  date, a level-progress bar built from two flex-ratio sibling
+  `FlexWidget`s since this library's `SizeStyleProps` has no percentage-
+  width support, per-row `+{payout}`), `CompanionWidget.tsx` (Companion
+  2×2 — Ember's own SVG ported to a raw string in `emberSvg.ts` and
+  rendered live via `SvgWidget`, safe here specifically because Ember's
+  viewBox is square like the widget; `expressionForStreak()` swaps
+  neutral/celebrate/sleepy at the same 7-day tier boundary
+  `COMBO_TIERS` already uses — TDD'd, 3 cases), `StreakWidget.tsx`
+  (Streak 2×2 — solid ember card per the mock spec, 🔥 + big streak
+  number + "DAY STREAK" label).
+- `snapshot.ts` extended with `level`/`intoLevel`/`need` (from the same
+  `overallProgress()` every other screen already calls) and
+  `rowsForHeightExpanded()` (separate chrome-height formula from the
+  compact widget's `rowsForHeight()`, since the expanded header+bar is
+  taller). `taskHandler.tsx` and `useWidgetSync.tsx` rewritten to push
+  all four widgets by name (`WIDGET_NAMES`) instead of hardcoding one.
+- `app.config.ts`'s widget plugin config extended from 1 to 4 entries;
+  new structural preview PNGs generated for the widget picker
+  (`scripts/gen-widget-previews.js`, same greeked-text convention as the
+  original preview).
+- `npx tsc --noEmit` clean; full `vitest run` green (145/148 — same 3
+  pre-existing live-DB drift failures, unrelated).
+- **Device verification found two real layout bugs**, both invisible to
+  `tsc`/`vitest`/code review since they're purely about RemoteViews
+  measuring actual on-screen space:
+  1. **Streak widget**: the 🔥 emoji (40sp) + streak number (34sp) alone
+     consumed the card's entire available content height, so "DAY
+     STREAK" never rendered at all — not shrunk, just absent (Android's
+     non-scrolling layout doesn't compress overflowing children, it just
+     clips them outside the parent's fixed bounds). Fixed by shrinking to
+     28sp/26sp/9sp and `contentPadding` 12→6; confirmed on-device that
+     all three lines now render.
+  2. **Companion widget**: same failure mode — the "🔥 N days" streak
+     line was invisible (only a sliver of the flame glyph peeked through)
+     because Ember's SVG (72dp) + "LVL N" (17sp) left no room. Fixed by
+     shrinking to 60dp/15sp/10sp and `contentPadding` 10→6; confirmed all
+     three elements render.
+  - Today 4×4 needed no fix — its chrome-height formula already budgets
+    real room. Today 4×2's title showed as "TODA…" on this home screen,
+    but that's the launcher placing this specific instance narrower
+    (~139dp) than its own declared 180dp minimum — a placement choice,
+    not a rendering bug; widening the widget on the home screen resolves
+    it.
+  - Root-caused both bugs the same way: cropped/zoomed the actual
+    home-screen screenshot pixel-by-pixel (via a throwaway Pillow venv,
+    since no image tool was otherwise available) rather than guessing
+    from source review — the card's full rounded border was visible with
+    nothing missing past it, proving the text was never laid out at all,
+    not merely scrolled off.
+- Dark mode verified by toggling the OS theme directly (`adb shell cmd
+  uimode night yes`, no touch input needed — worked around the earlier
+  MIUI-blocks-synthetic-input limitation for this one system-level
+  toggle) and reverted back to light afterward. All four widgets swap
+  correctly (border ink→paper, card bg→dark violet, halftone dots
+  render in white); Streak's solid ember fill is correctly unaffected by
+  theme, per its own spec.
+- **Follow-up bug, found by the user post-verification**: the Today
+  widgets' header icon tile was rendering ember/orange in both light and
+  dark, but the real app icon's background is violet (`theme.color.hero`
+  = `#6B3EF0`, confirmed against the exact `HERO` value `gen-icon.js`
+  itself renders the icon with) — a genuine brand mismatch, not a
+  theme-dependent bug, since `palette.ts`'s `tile` field was hardcoded to
+  `theme.color.ember` in *both* branches. Fixed by changing both to
+  `theme.color.hero`. One snag while fixing: the first `Edit` call used
+  `replace_all` but only changed the dark branch, because the two
+  identical-looking lines actually differ in indentation (6 vs 4 spaces,
+  nested vs top-level `return`) — `replace_all` matches the literal
+  string including whitespace, so it silently missed the second one;
+  caught by re-reading the file after the "successful" edit rather than
+  trusting the tool result, then fixed with a second targeted edit.
+  Confirmed via the compiled bundle that both branches now reference
+  `theme.color.hero`, then confirmed visually on-device in both dark and
+  genuine light mode (the device has a 7 PM–7 AM auto dark-theme
+  schedule that kept overriding manual `adb shell cmd uimode night no`
+  toggles, so light mode needed a quick re-check timed right after
+  setting it). Streak/Companion widgets don't use this tile and were
+  unaffected.
+- **Not committed** — no commit/push request for this batch yet.
+
+## Widget suite — matched to the CURRENT P2 mock + click-interaction fix (code+build done, device-verify pending)
+The whole earlier widget suite had been built against a **stale extract**
+(`/tmp/sec07.html`) of the P2 design. The user kept reporting a missing
+"purple banner" and a missing "daily strip" widget; two blind guesses at
+the banner (icon-tile → violet) were both wrong because they compared
+against the *actual* current mock, not the in-app UI. The real current
+mock was only recoverable from a zip the user attached
+(`~/Downloads/App icon design review.zip` → `/tmp/icon_review/Habiteer P2
+- Screens.dc.html`, the true 219KB deliverable). Its "07 WIDGET SUITE"
+section is a **different, newer** design than the cached extract — lesson
+recorded here so next time: check the user's attachment/zip for a fresh
+design file before trusting any cached extract.
+
+What the current mock actually specifies (now built to match):
+- **6 widgets** (mock shows 5; Streak kept as a 6th, off-mock, because a
+  live instance is already on the user's home screen and there's no way to
+  programmatically remove an orphaned widget): Companion 2×2, **Combo 2×2
+  (new)**, Today 4×2, **Quest 4×2 (new)**, Daily strip 4×4 (this replaces
+  what the code still registers as `TodayWidgetExpanded` — the widget name
+  is unchanged to avoid orphaning a placed instance; only its label
+  changed to "Daily strip"), plus the off-mock Streak 2×2.
+- **The "purple banner"**: Today 4×2's header is a full-bleed **ink**
+  banner strip (gold-bordered Ember tile, gold "TODAY · N/M", white streak,
+  gold coins); Daily strip 4×4's header is a full-bleed **violet**
+  (`#6B3EF0`/dark `#8B63FF`) banner with the icon tile, "LVL N · NAME"
+  (real display name from `fetchProfile`, plumbed through a new
+  `WidgetSnapshot.displayName`), an *embedded* gold progress bar, and the
+  streak/coins stacked right. Implemented via a new `header?` slot on
+  `WidgetCardFrame` that renders full-bleed above the padded body using
+  per-corner radius (`borderTopLeftRadius`/`borderTopRightRadius` — RN
+  RemoteViews has no negative-margin/clip-path, but per-corner radius IS
+  supported, confirmed in the vendored type defs) + a pre-baked white-dot
+  banner texture (`scripts/gen-widget-halftone.js` → `widget-banner-dots.png`).
+- **Night Patrol dark palette** (`darkTheme.ts` fully rewritten): the old
+  file held a *different, older* redesign's dark values (S8) — replaced
+  with the current mock's exact hex (ink `#0C0916`, card `#2E2447`, hero
+  `#8B63FF`, gold `#FFD23F`, ember `#FF7A4D`, success `#2ADBA0`, track
+  `#1A1526`, text `#F4EEDF`). Halftone PNGs regenerated to the correct dark
+  card color/opacity.
+- **DONE! stamp** on completed Today rows (rotated -6° Bangers, per the
+  mock's own tap-zone spec — previously just a plain checkmark).
+- **Ember redesign**: `emberSvg.ts` swapped from the old violet-ghost to
+  the mock's flame-drop mascot (ember body + gold belly; the exact path
+  appears 17× in the mock vs 1 stale ghost instance). Widget-suite only;
+  the in-app `components/Ember.tsx` still uses the old design — bringing
+  the rest of the app in line is a separate pass.
+- **Combo 2×2**: a pre-baked starburst PNG (`scripts/gen-widget-starburst.js`
+  — rasterizes the mock's exact 16-point `clip-path` polygon, since
+  RemoteViews has no clip-path) with "🔥 / ×N / COMBO!" overlaid; reuses
+  the app's own `comboMultiplier()`.
+- **Quest 4×2**: honest zero-new-backend version — "quest" = today's real
+  due-count (`doneToday`/`totalDue`), progress bar + a "POW! 🪙N" reward
+  tag showing the sum of not-yet-earned payouts. (No daily-quest concept
+  exists in the data model; inventing one would be a new economy feature,
+  out of scope for a widget-visual pass — flagged, not silently faked.)
+- Chrome-height row-count budgets (`snapshot.ts`) rebuilt off shared
+  `TODAY_BANNER_HEIGHT`/`DAILY_STRIP_BANNER_HEIGHT` constants the widgets
+  themselves render with, so a banner tweak can't silently desync the
+  row-fit math (the exact class of bug that clipped rows twice before).
+- **All 6 widgets device-verified in light + dark** (the mock-match round):
+  screenshots confirmed the ink/violet banners, DONE! stamp, real Ember,
+  Day-N speech bubble, embedded progress bar, and correct Night-Patrol
+  dark swap. `tsc` clean, `vitest` 146/149 (same 3 known drift failures).
+
+### Click-interaction fix (the reported "everything just opens the app")
+User: tapping *anywhere* on a widget — including a checkbox row that
+should complete a habit — always opened the app; no per-element ticking
+from the home screen. Root-caused by reading the library's vendored native
+Java (`RNWidget.java`, `WidgetFactory.java`, `ClickableView.java`), two
+real **library-level** defects:
+1. The lib renders the whole widget to one bitmap and lays every
+   `clickAction` down as a separate absolutely-positioned invisible overlay
+   in one shared `FrameLayout`, sorted by tree-path id string. A full-bleed
+   `OPEN_APP` on the card root (id `"0-0"`) is a string-prefix of every
+   row's id, so it *always* sorts first → its full-size hitbox sits
+   underneath every row's hitbox in the same container, and the launcher
+   resolves overlapping taps to it. **Fix (TSX):** `WidgetCardFrame` gained
+   a `rootOpensApp` prop; the two checklist widgets pass `false` and put
+   `OPEN_APP` only on their (non-overlapping) header/banner region, so rows
+   own their own taps. Matches the mock's tap-zone map (header → open app,
+   rows → complete).
+2. `registerClickTask` used `(int) System.currentTimeMillis()` as the
+   `PendingIntent` requestCode, in a tight loop over every clickable region.
+   Since `Intent.filterEquals()` ignores extras, requestCode is the *only*
+   thing distinguishing a widget's PendingIntents — and back-to-back
+   `currentTimeMillis()` calls routinely collide on the same millisecond,
+   collapsing multiple regions onto one `PendingIntent` under
+   `FLAG_CANCEL_CURRENT` (tap-one-fire-another). **Fix (patch-package):**
+   `patches/react-native-android-widget+0.21.0.patch` changes the
+   requestCode to `id * 31 + clickableView.getId().hashCode()` — stable,
+   unique per (widget instance, region). Added `patch-package` +
+   `postinstall-postinstall` devDeps and a `postinstall: patch-package`
+   script so it survives `npm install`.
+- `tsc` clean; `vitest` 146/149 (same 3 known drift failures); debug APK
+  **built successfully** with the patched native code (`gradlew
+  :app:assembleDebug`, BUILD SUCCESSFUL). **Device install + a real tap
+  test (watch logcat for the COMPLETE_TRACKABLE broadcast reaching the
+  server) is the one remaining gate** — the phone disconnected mid-round,
+  so install/verify + commit are pending its return.
+- **Not committed** — pending device verification of the tap, then a
+  commit+push covering this whole widget round (mock-match + click fix)
+  was explicitly requested.
+
 ## Phase 9 — Gamified stats page (done)
 "Move to next phase" resumed PLAN.md §13's numbered v2 roadmap where it
 left off (items 6–8 done; the redesign was an ad hoc insertion, not part

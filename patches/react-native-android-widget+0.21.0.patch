@@ -1,0 +1,28 @@
+diff --git a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidget.java b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidget.java
+index a7079f9..afa7cf6 100644
+--- a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidget.java
++++ b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidget.java
+@@ -205,9 +205,22 @@ public class RNWidget {
+         intent.putExtra("widgetId", id);
+         intent.putExtra("clickAction", clickableView.getClickAction());
+         intent.putExtra("clickActionData", Arguments.toBundle(clickableView.getClickActionData()));
++        // Habiteer patch (patch-package): the upstream code used
++        // `(int) System.currentTimeMillis()` as the requestCode. Because
++        // Intent.filterEquals() ignores extras, every clickable region in a
++        // widget shares the same action + component, so the requestCode is
++        // the ONLY thing distinguishing their PendingIntents — and this loop
++        // calls currentTimeMillis() microseconds apart, so adjacent regions
++        // routinely got the same millisecond value, collapsing onto one
++        // PendingIntent under FLAG_CANCEL_CURRENT. Result: tapping one row
++        // fired whichever region registered last (e.g. every tap opened the
++        // app / hit the wrong habit). A stable code derived from the widget
++        // instance + the clickable view's tree-path id is unique per region
++        // and deterministic across re-renders.
++        int requestCode = id * 31 + clickableView.getId().hashCode();
+         PendingIntent pendingIntent = PendingIntent.getBroadcast(
+             appContext,
+-            (int) System.currentTimeMillis(),
++            requestCode,
+             intent,
+             PendingIntent.FLAG_CANCEL_CURRENT
+                 | PendingIntent.FLAG_MUTABLE

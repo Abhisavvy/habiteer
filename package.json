@@ -13,7 +13,8 @@
     "db:gen-sql": "tsx scripts/gen-sql-constants.ts",
     "db:apply-sql": "tsx scripts/apply-sql.ts",
     "db:backup": "tsx scripts/backup.ts",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@expo-google-fonts/bangers": "^0.4.1",
@@ -55,7 +56,9 @@
     "drizzle-kit": "*",
     "drizzle-orm": "*",
     "drizzle-zod": "*",
+    "patch-package": "^8.0.1",
     "pg": "*",
+    "postinstall-postinstall": "^2.1.0",
     "tsx": "^4.23.1",
     "typescript": "*",
     "vitest": "*"

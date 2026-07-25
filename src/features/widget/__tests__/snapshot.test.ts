@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { buildWidgetSnapshot, capSnapshotRows, rowsForHeight } from "../snapshot";
+import { buildWidgetSnapshot, capSnapshotRows, rowsForHeight, rowsForHeightExpanded } from "../snapshot";
 import { taskCoins } from "@/features/gamification/coins";
+import { overallProgress } from "@/features/completions/derived";
 import type { Trackable } from "@/features/trackables/api";
 import type { Completion } from "@/features/completions/api";
 
@@ -97,6 +98,26 @@ describe("buildWidgetSnapshot", () => {
     expect(snap.totalDue).toBe(3);
   });
 
+  it("computes level/intoLevel/need from the same overallProgress every other screen uses", () => {
+    const trackables = [trackable({ id: "a" })];
+    const completions = [
+      completion({ id: "c1", completedOn: "2026-01-08", xpEarned: 10 }),
+      completion({ id: "c2", completedOn: "2026-01-09", xpEarned: 10 }),
+      completion({ id: "c3", completedOn: TODAY, xpEarned: 10 }),
+    ];
+    const snap = buildWidgetSnapshot(trackables, completions, 0, TODAY, 5);
+    const expected = overallProgress(completions);
+    expect(snap.level).toBe(expected.level);
+    expect(snap.intoLevel).toBe(expected.intoLevel);
+    expect(snap.need).toBe(expected.need);
+  });
+
+  it("defaults displayName to empty string, and carries a given one through for the Daily strip widget", () => {
+    const trackables = [trackable({ id: "a" })];
+    expect(buildWidgetSnapshot(trackables, [], 0, TODAY, 5).displayName).toBe("");
+    expect(buildWidgetSnapshot(trackables, [], 0, TODAY, 5, "Alex").displayName).toBe("Alex");
+  });
+
   it("computes topStreak across habits, ignoring tasks (which never have a streak)", () => {
     const trackables = [
       trackable({ id: "a", createdAt: "2025-01-01T00:00:00Z" }),
@@ -130,11 +151,25 @@ describe("capSnapshotRows", () => {
   });
 });
 
+// Chrome constants below are TODAY_BANNER_HEIGHT(44)/DAILY_STRIP_BANNER_HEIGHT(64)
+// + body padding + a small margin (see snapshot.ts) — the P2 banner redesign
+// made both widgets' fixed chrome shorter than the pre-banner layout (a
+// separate divider + two-line subtitle + below-header progress bar), so
+// more rows now fit at the same widget height than before that redesign.
 describe("rowsForHeight", () => {
   it("shows more rows for a taller widget", () => {
     expect(rowsForHeight(80)).toBe(1);
     expect(rowsForHeight(150)).toBe(2);
     expect(rowsForHeight(220)).toBe(4);
     expect(rowsForHeight(300)).toBe(6);
+  });
+});
+
+describe("rowsForHeightExpanded", () => {
+  it("shows fewer rows than the compact widget at the same height (taller chrome)", () => {
+    expect(rowsForHeightExpanded(80)).toBe(1);
+    expect(rowsForHeightExpanded(150)).toBe(1);
+    expect(rowsForHeightExpanded(220)).toBe(3);
+    expect(rowsForHeightExpanded(300)).toBe(6);
   });
 });
