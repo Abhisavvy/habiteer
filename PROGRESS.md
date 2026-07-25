@@ -1775,3 +1775,512 @@ Local commits `b061990` (foundations) → `224700b` (card + level bar) →
   reminders/sound + Gap #3 group-streak ARE device-verified. Quests device
   test pending (above).
 - Otherwise none blocking. See "Known follow-ups" for accepted v1/v2 gaps.
+
+## Phase U (partial) — pre-scoped correctness fixes, ahead of the user's UI/UX list
+
+Roadmap context: after M1 (3★ marquee animations, shipped `b40ab30`), the plan
+is UI/UX fixes (Phase U) → motion M2–M4 → notifications → quest coherence →
+research wedges, with point-3 strategic bets parked for hard launch. Phase U
+itself is still blocked on the user's own list of UI/UX issues — not yet
+provided — but two correctness bugs were already pre-scoped into it (found by
+two Explore-agent audits earlier this session) and fixed now since they don't
+depend on that list:
+
+1. **Two false doc comments corrected.** Both were self-inflicted errors from
+   earlier in this session, corrected via firsthand source reading:
+   - `src/features/profile/useBoolSetting.ts` claimed Reminders is a UI stub
+     and sound/haptics aren't wired — both false. Reminders
+     (`src/features/reminders/`) is a fully real scheduling system; sound/
+     haptics are wired via `src/features/feedback/feedback.ts`. Comment now
+     describes this toggle correctly as the master on/off switch each reads.
+   - `src/features/widget/QuestWidget.tsx` claimed no quest backend exists —
+     false; `quest_claims`/`fn_claim_quest` is a real, server-authoritative
+     weekly quest system (`app/quests.tsx`). Comment corrected to note the
+     widget is a deliberate `doneToday`/`totalDue` stand-in, not evidence of
+     a missing backend — the actual rewire to real quest data is its own
+     future phase (Phase Q), not done here.
+2. **`app/stats.tsx`'s `?? "week"` period fallback, fixed.** The per-habit
+   loop only iterates `kind === "habit"` rows, and `TrackablePanel.tsx`
+   always assigns habits an explicit `period` ("day"/"week"/"month") at
+   creation — `null` is reserved for tasks only — so the fallback was
+   defensive dead code today, not a live bug. Still fixed properly rather
+   than left as a smell: `periodProgress` is now only called when
+   `t.period` is genuinely `"week"` or `"month"`; anything else (day, or a
+   hypothetical null) falls through to `rate = 0` instead of being silently
+   scored against a weekly quota it doesn't have.
+3. **`completions/api.ts` no longer drops `freezeSpent`/`freezeGranted`.**
+   `mapCompletionRow` mapped every column off a `completions` row except
+   these two (`freeze_spent`/`freeze_granted`, populated by
+   `fn_complete_trackable` in `rpc.sql` on the completion that spent/granted
+   a token) — so no UI could ever have shown that a freeze token was
+   consumed, even though the data was already sitting in the DB row.
+   `Completion` now carries both fields. This is a data-availability fix
+   only, not new UI — deliberately, since *showing* this (the "a freeze
+   token protected your streak" moment) is Phase R's scope (the long-horizon
+   goal reframe), not a bolt-on here. Four test-fixture helpers
+   (`quests/__tests__/derived.test.ts`, `widget/__tests__/snapshot.test.ts`,
+   `completions/__tests__/derived.test.ts`, `stats/__tests__/derived.test.ts`)
+   had their `Completion`-typed literals updated to match the wider type.
+
+### Verification
+- `npx tsc --noEmit` clean.
+- `npx vitest run` (CI=1, backgrounded — this repo's rtk hook mangles direct
+  vitest output): **146/149**, the exact same 3 pre-existing live-DB-drift
+  failures in `rpc.test.ts` as every prior round (freeze-token level-boundary
+  grants, undo-revokes-token, level-5 gate) — no new regressions.
+- No device test needed — this batch is pure logic/type correctness with no
+  new visible surface (the comment fixes touch no rendered UI; the
+  `stats.tsx`/`completions/api.ts` fixes don't change any current behavior
+  for real data, only the null/mis-scope edge case and a previously-invisible
+  data field).
+- **Not committed** — awaiting the user's UI/UX list so Phase U ships as one
+  batch, per the approved roadmap ("their choice, and the right one... doing
+  motion first would build on layouts that then shift underneath").
+
+## Phase M2 — Haptic map completion
+
+Roadmap context: with Phase U's UI/UX list still not in hand, moved ahead to
+the next unblocked item in the approved point-2 order (Motion M2–M4 →
+notifications → quest backend). Before this phase only SUCCESS
+(complete/redeem) and HEAVY (level-up) were wired, via
+`src/features/feedback/feedback.ts`. This phase adds the three missing
+buckets — LIGHT, MEDIUM, WARNING — centralized rather than sprinkled per-call-
+site, per the plan's own framing.
+
+- **`feedback.ts`** gained `feedbackLight`/`feedbackMedium`/`feedbackWarning`
+  — thin wrappers around `Haptics.impactAsync(Light/Medium)` and
+  `Haptics.notificationAsync(Warning)`, gated by the same `hapticsEnabled`
+  cache every existing feedback function already uses.
+- **LIGHT is now `HardShadow`'s default.** `HardShadow` (the universal
+  shadowed Pressable/View wrapper, ~26 files / 130+ call sites) gained a
+  `haptic?: "light"|"medium"|"warning"|"none"` prop; any `onPress` fires
+  LIGHT automatically unless overridden — the "one change, not fifty" the
+  plan called for. One real false-positive found and fixed: `Modal.tsx`'s
+  card wrapper passes `onPress={(e) => e.stopPropagation()}` purely to stop a
+  tap-anywhere-inside-the-card from bubbling to the scrim's dismiss handler —
+  not a real user action, so it got `haptic="none"` to avoid buzzing on every
+  tap inside any modal. `BottomHUD.tsx`'s 4 tab buttons are raw `Pressable`s
+  (not `HardShadow`), so they got an explicit `feedbackLight()` call instead;
+  its floating "+" is already a `HardShadow`, so it picked up the default
+  for free.
+- **MEDIUM** on primary commits. `ModalButton` (`Modal.tsx`) now maps its
+  color variant to a haptic: `jade`/`fire`/`ink` (Redeem confirm, Delete,
+  Sign out — real committed actions) → medium; `cancel`/`info`/`violet`
+  (Cancel, "Got it", "Keep earning" — dismissive/acknowledging, not a commit)
+  stay at the LIGHT default. This covers Redeem confirm per the plan, plus
+  Delete/Sign-out by the same logic (not explicitly named in the plan, but
+  the identical "committing to a real action" reasoning applied consistently
+  rather than special-cased). `TrackablePanel`'s Save and
+  `CreateOrJoinPanel`'s Join/Create both got an explicit `haptic="medium"`
+  override (plain `HardShadow` buttons, not `ModalButton`s).
+- **WARNING** on the two existing risk/blocked-action surfaces.
+  `InsufficientFundsModal` and `DeleteConfirmModal` each gained a
+  `useEffect(() => { if (visible) feedbackWarning(); }, [visible])` —
+  the exact pattern `ConnectionToast.tsx` already uses for network errors
+  (fire when the warning-signaling UI *appears*, not on a later button tap).
+  Both are conditionally mounted by their parent screens (`{x && <Modal
+  visible .../>}`), so the effect fires correctly on mount.
+- **"Form validation failures" (named in the plan's WARNING bucket) is
+  explicitly NOT wired this pass** — there is no error-surfacing UI path to
+  hang it on yet. `TrackablePanel`'s Save button is simply `disabled` when
+  the form is invalid (`canSubmit`), so an invalid form can't even be
+  tapped — there's no inline error state, no shake, nothing that "appears"
+  the way `ConnectionToast`/the two modals above do. That surface is Phase
+  M4's job ("field-error shake"); wiring a warning haptic to a UI element
+  that doesn't exist yet would be backwards. Stated here rather than
+  silently skipped.
+
+### Verification
+- `npx tsc --noEmit` clean.
+- `npx vitest run` (CI=1, backgrounded): **146/149**, the same 3 pre-existing
+  live-DB-drift failures as every prior round — no regressions. This phase
+  has no new pure logic to unit-test (haptic wiring only, gated behind a
+  cache that was already tested implicitly via the existing feedback
+  functions' identical pattern).
+- **No device test performed this round** — no physical device connected in
+  this session. Haptics are inherently not verifiable any other way (nothing
+  visual to screenshot, no log line to grep), so this is stated as a real,
+  outstanding gap rather than claimed as done. Recommended check next time
+  the phone's connected: tap through a few screens/tabs (LIGHT), Save a
+  habit / Redeem a reward / Join a group (MEDIUM), open Insufficient-funds
+  and Delete-confirm (WARNING) — confirm each feels distinct and none
+  double-fire.
+- **Not committed** — same "one commit per phase" convention as every prior
+  phase; pending the device check above (or the user's explicit go to
+  commit without it, as with M1's honest-limits precedent).
+
+## Phase M3 — Pervasive motion polish
+
+All five items from the plan's M3 scope, landed in one pass.
+
+- **Button/FAB squash-press**, centralized in `HardShadow.tsx` (same "one
+  change, not fifty" approach as M2's haptics): a shadowed box springs
+  toward its own shadow offset on press-in — translating the content box by
+  exactly `(dx, dy)` makes it land precisely on top of the shadow layer
+  underneath, reading as the button "sinking into" its hard shadow, the
+  classic neobrutalist press — and springs back on release. A shadowless
+  box (no shadowColor/offset) just scales to 0.96 instead, since there's no
+  shadow to sink into. Needed `Animated.createAnimatedComponent(Pressable)`
+  (created once at module scope — a fresh one per render would remount the
+  underlying native view and break touch entirely) so the press transform
+  can live on the `Pressable` itself. Gated on a new
+  `getReduceMotionCached()` — a module-scope cache in `useReduceMotion.ts`,
+  checked once at import time rather than via the existing per-instance
+  async hook, since `HardShadow` alone mounts 130+ times across the app and
+  a `useReduceMotion()` call at each one would fire that many redundant
+  native `AccessibilityInfo` bridge calls on every screen.
+- **XP-bar fill + coin-counter tween.** New `src/components/AnimatedNumber.tsx`
+  — tweens a displayed integer to a new value over 500ms (snaps instantly on
+  first mount and under reduce-motion) via a JS-driven `Animated.Value` +
+  listener (native-driven animations can't feed a live number back to JS for
+  text rendering). Wired into: `LevelBar.tsx`'s XP fill bar (was an instant
+  `width: {pct}%` snap, now an `Animated.timing` tween) and its `{intoLevel}`
+  number; the Today header's coin badge; the Rewards header's coin badge.
+  Profile/Stats screens showing the same balance are left as plain text —
+  those are visited separately from the earn/spend moment itself, a
+  reasonable scope line rather than sweeping every numeric `Text` in the app.
+- **Modal slide-up + scrim fade, with a REAL exit animation** (the plan only
+  asked for entrance + fade, but a smooth open into an instant-vanish close
+  would have read as broken, so this went a bit further). The hard part:
+  5 of the 6 concrete modals are conditionally *mounted* by their parent
+  (`{x && <FooModal visible .../>}`) — tapping Cancel/Confirm/Delete
+  unmounts the whole tree instantly, there's no `visible: true→false` prop
+  transition to animate on. Solved with `ModalExitContext`: `Modal` provides
+  an `animateOutThenCall(cb)` function; `ModalButton` (and the scrim's
+  tap-to-dismiss) call `requestExit(onPress)` instead of `onPress()`
+  directly, so the shared 180ms fade-out plays FIRST and only then invokes
+  the real handler that triggers the actual unmount/state-change — entirely
+  contained inside `Modal.tsx`'s two exports, with zero changes needed to
+  any of the 6 concrete modal components or the screens that use them. Two
+  modals (`SignOutConfirmModal`, `StreakFreezeExplainerModal`) instead stay
+  always-mounted and toggle a real `visible` boolean — handled by the same
+  code path (`closed` state initializes from the current `visible` and
+  resets on every `false→true` transition, so a reopened always-mounted
+  modal replays its entrance correctly instead of staying stuck closed
+  after its first use). Split the scrim into a separate tint layer +
+  dismiss-`Pressable` so the scrim's own fade doesn't compound with the
+  card's independent entrance opacity.
+- **Card-list stagger.** New `src/components/StaggerItem.tsx` — fades +
+  rises one child in on *its own* mount, delayed by `index * 60ms` (capped
+  at 8 steps so a long list doesn't take forever to finish appearing).
+  Wrapping each `TrackableCard` with `key={t.id}` on the `StaggerItem`
+  (not the card) means React keeps the same instance across re-renders as
+  long as the habit isn't added/removed — so the stagger plays once on
+  initial load (or when a habit is newly added) and does NOT replay every
+  time toggling one habit's done state re-renders the whole list.
+- **Tab cross-fade + screen push/pop**, both made explicit instead of
+  implicit. Confirmed via `@react-navigation/bottom-tabs`'s own type defs
+  that its default is `animation: "none"` (an instant swap, no transition at
+  all) — set `animation: "fade"` + `transitionSpec: { duration: 250 }` in
+  `app/(tabs)/_layout.tsx`. For the root `Stack` (`app/_layout.tsx`),
+  confirmed the opposite: Android's own "default" push/pop already IS a
+  native slide transition, so this was mostly about making that an explicit
+  choice (`animation: "slide_from_right"`, documented as Android-only,
+  falling back to iOS's own default there) rather than an unstated implicit
+  default — **not** a numeric-duration change. Checked
+  `@react-navigation/native-stack`'s types directly: `animationDuration` is
+  documented as **iOS-only**, and explicitly does not apply to `"default"`
+  or Android-specific animations like this one — so Android's push/pop
+  timing isn't independently tunable through this API at all. Stated here
+  rather than silently claiming a "300ms" that the platform doesn't
+  actually expose a knob for.
+
+### Verification
+- `npx tsc --noEmit` clean.
+- `npx vitest run` (CI=1, backgrounded): expect the same 146/149 (3
+  pre-existing live-DB-drift failures, unrelated) — this phase is entirely
+  view/animation/navigation config, no new pure logic to unit-test.
+- **No device test performed this round** — no physical device connected in
+  this session, same honest gap as M2. All five items are visual/motion —
+  screenshots can't capture animation, so the real check is a live device
+  pass: complete a habit and confirm the coin badge count-up + XP-bar tween,
+  press a button and feel the sink/squash, open then Cancel a modal and
+  confirm both the entrance AND the new exit fade play, reload Today and
+  watch the card stagger, switch tabs and confirm the cross-fade, push into
+  Stats/Cosmetics/a group and confirm the slide — then repeat with Android's
+  "Remove animations" on and confirm everything snaps to its final state
+  instantly with no crash.
+- **Not committed** — same per-phase convention; M2 and M3 are both still
+  pending a device pass or the user's go to commit without one.
+
+## Phase M4 — Smaller motion touches
+
+All six items from the plan's M4 scope, landed in one pass. This closes out
+the full Motion M2→M4 sequence approved in the roadmap.
+
+- **Field-error shake, `TrackablePanel`.** The Save button was fully
+  `disabled` when the form was invalid, so there was nothing to shake —
+  tapping a disabled button fires no event at all. Changed the button to
+  stay visually dimmed (`primaryBtnDisabled`) but remain tappable
+  (`disabled={submitting}` only, dropped `!canSubmit`); `submit()` now
+  branches on `canSubmit` itself — shakes the whole panel (a 5-step
+  alternating-direction `translateX` sequence via `HardShadow`'s existing
+  `animatedStyle` escape hatch) and fires `feedbackWarning()` on an invalid
+  tap, or `feedbackMedium()` and proceeds on a valid one. This also
+  retroactively fulfills what M2 explicitly deferred: "form validation
+  failures" had no UI to hang a warning haptic on at the time; now it does.
+- **Empty-state Ember idle bob+blink.** New `src/components/IdleEmber.tsx` —
+  wraps `Ember` in a looping vertical bob (`Animated.loop`, sine-eased) and,
+  every ~3.2s, briefly swaps `expression` from `"sleepy"` to `"neutral"` for
+  ~220ms (a "peek" — the existing `sleepy` art IS closed eyes, so a literal
+  blink-while-already-closed would be invisible; peeking open and closing
+  again reads as a dormant mascot, not a dead one). Swapped into the Today
+  screen's zero-habit empty state in place of the static `<Ember
+  expression="sleepy">`. Static under reduce-motion.
+- **Cosmetic-equip morph.** New `src/components/EquipPop.tsx` — pops a
+  child with a quick scale bounce (1 → 1.15 → 1, two chained springs) the
+  moment an `equipped` boolean prop transitions false→true, tracked via a
+  ref (same "genuine edge, not just truthy" pattern `TrackableCard`'s
+  `prevDone` already established) — not on mount, not on every re-render
+  while already equipped. Wrapped around all three `app/cosmetics.tsx`
+  sections (avatar-color swatches, title rows, card-skin swatches); moved
+  each `key` from the `HardShadow` up to the new wrapper since React needs
+  it on the direct child returned from `.map()`.
+- **Quest-claim coins-fly**, reusing `Confetti.tsx` from M1 exactly as
+  planned — no new burst component needed. `app/quests.tsx` tracks a
+  transient `justClaimed: questId | null`, set in `claimMutation`'s
+  `onSuccess` (celebrates once the server confirms, not optimistically) and
+  cleared after 900ms; the matching quest card conditionally renders
+  `<Confetti count={12} .../>` as a child, which fills+centers on that
+  card specifically since RN `View`s are `position: "relative"` by default.
+  Chips can spill past the card's own edges (no `overflow: "hidden"` on
+  quest cards) — accepted as the same "juicy, not clipped" precedent
+  `LevelUpOverlay`'s confetti already sets.
+- **`FloatingXp` arc-to-bar.** Was a pure vertical float+fade with zero
+  horizontal movement. Now both X and Y are driven off one shared linear
+  `progress` value but interpolated with mismatched curve shapes — Y
+  reaches most of its travel early (`[0, 0.85·dy, dy]`), X stays mostly put
+  at first then sweeps late (`[0, 0.15·dx, dx]`) — the mismatch between the
+  two axes is what reads as a curved arc instead of a straight line, no
+  real physics/bezier path needed. The target is `Dimensions.get("window")
+  .width / 2` horizontally and a **fixed approximate** header-area Y (95px)
+  — not the LevelBar's real measured position, which would need a
+  layout-measurement pipeline (a ref threaded down through the overlay);
+  stated as the deliberate scope line for what's meant to be a small touch.
+- **Splash timing, tuned toward 1200ms** (was ~700-800ms, per Phase A's own
+  device-measured number). Slowed the leg-rise stagger (90→130ms offset,
+  260→340ms per leg), slightly slowed the cap spring (friction 4→5, tension
+  140→120), and added an explicit 180ms hold before the 220ms fade-out
+  (previously the fade's own internal `delay:150` was the only pause) so
+  the finished mark registers for a beat rather than starting to fade the
+  instant it settles. Approximate by construction — a spring's exact settle
+  time isn't analytically predictable, and there's no device this session
+  to time it live; stated rather than claimed as an exact 1200ms.
+
+### Verification
+- `npx tsc --noEmit` clean.
+- `npx vitest run` (CI=1, backgrounded): expect the same 146/149 (3
+  pre-existing live-DB-drift failures, unrelated) — entirely view/animation,
+  no new pure logic.
+- **No device test performed this round** — same honest gap as M2/M3, no
+  physical device connected this session. Every item here is motion/timing,
+  so the real check is live: submit an invalid habit form and feel the
+  shake + warning haptic (and confirm a VALID submit still saves normally,
+  since the button is no longer hard-disabled); sit on a zero-habit Today
+  screen and watch Ember bob + peek; equip a cosmetic and watch it pop;
+  claim a quest and watch the confetti burst on that specific card; complete
+  a habit and watch the XP number curve toward the header instead of
+  floating straight up; cold-start the app and time the splash by eye
+  against the ~1200ms target. Then re-check all of the above with Android's
+  "Remove animations" on.
+- **Not committed** — M2, M3, and M4 are all still pending either a device
+  pass or the user's explicit go to commit without one. This closes the
+  full Motion M2→M4 sequence; per the approved point-2 order, notifications
+  is next, unless Phase U's UI/UX list arrives first.
+
+## Phase N — Notification polish
+
+Both required items from the plan; the three "optional" ones explicitly
+skipped, per the plan's own wording, not silently dropped.
+
+- **Tap handling → deep-link to the habit.** There was zero
+  `addNotificationResponseReceivedListener` anywhere — tapping a reminder
+  just opened the app to wherever it happened to be. New
+  `useNotificationTapHandler` (`src/features/reminders/useNotificationTap.ts`),
+  registered once at the app root (`app/_layout.tsx`, unconditional — a
+  no-op listener if nothing was ever scheduled, so it doesn't need to be
+  gated on session): recovers the trackable id from the notification's
+  `${trackableId}:${slot}` identifier (`schedule.ts`'s own format —
+  trackable ids are UUIDs with no colons, so splitting on `":"` and taking
+  the first segment is unambiguous), stashes it in a new tiny store
+  (`src/features/navigation/reminderTap.ts`, the exact same shape
+  `addAction.ts` already established for the raised "+" button), and
+  navigates to `/(tabs)` (Today). Today reads and clears that store in a
+  plain `useEffect` once its trackable list is loaded, opening the matching
+  habit's edit panel — a plain effect rather than `useFocusEffect`, since
+  Today is the tab this always navigates TO and might already be focused
+  (a focus-only hook wouldn't refire in that case).
+- **Moved `useReminderSync`'s mount to the app root.** It lived in
+  `app/(tabs)/index.tsx`, so a session that never happened to land on
+  Today never resynced its reminders. Moved to a small `ReminderSyncMount`
+  component in `app/_layout.tsx`, gated on `session` (`{session &&
+  <ReminderSyncMount />}`) so it never fetches trackables or schedules
+  anything while signed out — rather than adding an `enabled` option to
+  `useTrackablesQuery` itself, which is called unconditionally elsewhere
+  and didn't need its signature touched for this.
+- **Explicitly skipped, per the plan's own "Optional:" framing**: a
+  "Mark done" tray action (a notification category — real scope, its own
+  small feature, not a one-liner alongside this), an arbitrary time picker
+  beyond the 5 presets, and multiple reminders per habit (the `${id}:${i}`
+  identifier scheme already supports it, but the add/edit panel has no UI
+  for a second slot yet). None of these are needed for "tapping a reminder
+  takes you to the right place" and "reminders stay in sync regardless of
+  which tab you land on" — the two things actually named as required.
+
+### Verification
+- `npx tsc --noEmit` clean.
+- `npx vitest run` (CI=1, backgrounded): expect the same 146/149 (3
+  pre-existing live-DB-drift failures, unrelated) — this phase has no new
+  pure logic (`schedule.ts`'s existing test coverage is untouched; the new
+  code is a listener + a tiny store + a consuming effect, not something
+  with a meaningful red-first unit to write).
+- **No device test performed this round** — same honest gap as M2-M4, no
+  physical device connected this session, and this phase specifically
+  needs one: local notifications, foreground/background transitions, and
+  tap-while-backgrounded/killed can't be verified any other way. Real
+  check next time the phone's connected: schedule a reminder, background
+  the app, tap the notification banner, confirm it lands on Today with the
+  right habit's edit panel already open; sign out and confirm no crash/
+  fetch-storm from the gated `ReminderSyncMount`; toggle the Reminders
+  setting off/on and confirm sync still fires correctly from the root.
+- **Not committed** — same per-phase convention; M2 through N are all
+  still pending either a device pass or the user's go to commit without
+  one. Per the approved point-2 order, quest coherence (Phase Q) is next.
+
+## Phase Q — Quest coherence
+
+This closes the full approved "point 2" sequence (Motion M2→M4 →
+notifications → quest backend). `QuestWidget.tsx` no longer ignores the
+real weekly quest system — the false "no quest backend" comment was already
+corrected earlier this session (Phase-U-adjacent batch); this phase does
+the actual rewire that comment deferred.
+
+- **New `featuredQuestStatus`** (`src/features/quests/derived.ts`, TDD'd
+  first — 3 new cases confirmed red, then green): picks the ONE quest to
+  feature where there's only room for one (the compact widget). An
+  unclaimed quest that's already met wins (ready to claim — the most
+  exciting state); otherwise the active quest closest to its own goal *by
+  fraction* (`progress/goal`, not raw count, so a 3/5 quest and a 40/200
+  quest compare fairly). A claimed quest is only ever featured as a
+  genuine last resort, if every active quest is claimed. Returns `null`
+  only if nothing is active at all — not reachable with today's catalog
+  (busy_bee/steady/coin_rush have no window), kept correct rather than
+  assumed, same defensive-but-honest precedent as the `stats.tsx` fix
+  earlier in this session.
+- **Plumbed into `WidgetSnapshot`** (`snapshot.ts`, 2 new TDD cases):
+  `buildWidgetSnapshot` gained a `questClaims` parameter (defaulting to
+  `[]`, same pattern `displayName` already established, so no existing
+  call site needed updating) and a new `featuredQuest` field —
+  `{title, emoji, progress, goal, reward, met, claimed} | null`, title/
+  emoji sourced from the existing `questCopy()` so the widget can't drift
+  from the real quests screen's own copy.
+- **`QuestWidget.tsx` rewired** to render `snapshot.featuredQuest` instead
+  of the `doneToday`/`totalDue` stand-in — real title/emoji/progress bar/
+  reward, with the claim-badge text switching between `+{reward} 🪙` (in
+  progress), `CLAIM! 🪙{reward}` (met, unclaimed), and `CLAIMED ✓`. The
+  header text changed from the mock's literal "QUEST OF THE DAY" to
+  "WEEKLY QUEST" — deliberately not verbatim, since the underlying data is
+  now a real WEEKLY quest and the mock's daily framing would state
+  something false about it, the same call already made for the
+  streak-freeze modal's copy earlier this session. Still read-only —
+  claiming happens in the app (`app/quests.tsx`), not from the widget.
+- **`useWidgetSync.tsx`** gained a `useQuestClaimsQuery()` call, passing
+  `questClaims ?? []` through — same shape as the existing
+  `useProfileQuery()` → `displayName` wiring.
+- **Noted for later, not this phase** (per the plan's own framing): the
+  quest catalog is build-time-generated (`QUESTS` → `constants.sql` via
+  `gen-sql-constants.ts`), so rotating a quest needs a code change +
+  `db:gen-sql` + `db:apply-sql` + a release — moving it into a `quest_defs`
+  table would be the real fix, but that's a deliberate scope call from
+  earlier this session, not a bug introduced or fixed here.
+
+### Verification
+- `npx tsc --noEmit` clean.
+- `npx vitest run` (CI=1, backgrounded): 3 new `quests/derived.test.ts`
+  cases + 2 new `widget/snapshot.test.ts` cases, all TDD'd red-first then
+  green; expect the full suite at 151/154 (146 prior + 5 new, same 3
+  pre-existing live-DB-drift failures, unrelated).
+- **No device test performed this round** — same honest gap as every
+  phase since M2, no physical device connected this session. The widget
+  specifically needs one: Combo/Quest widgets were added to the home
+  screen in an earlier round, so a real device check would confirm the
+  Quest widget now shows a real weekly quest (title/progress/reward)
+  instead of the old daily due-count, in both light and dark.
+- **Not committed** — same per-phase convention. This closes the full
+  approved point-2 sequence end to end. Point 3 (deeper social, richer
+  insight, monetization) stays parked for hard launch per the original
+  roadmap decision; Phase U (UI/UX fixes) remains blocked on the user's
+  own list, not yet provided.
+
+## Device pass — covering the whole accumulated batch (Phase-U-adjacent + M2–M4 + N + Q)
+
+Killed a stale Metro instance left running from earlier in the session (7+
+hours old, predating all of this batch) and started fresh with `--clear`,
+confirming a genuinely new bundle (3631 modules) rather than trusting
+hot-reload — the established caution from every prior device round.
+
+**Real, new constraint hit this round**: this device's shell can no longer
+inject synthetic input at all — `adb shell input keyevent/tap` now fails
+outright with `SecurityException: ... requires ... INJECT_EVENTS
+permission`, confirmed directly rather than assumed. Previous rounds this
+session used `adb shell input` for exactly this and it worked; something
+about this device/session's permission state has changed. Worked around
+where possible: `am start`/`monkey -c LAUNCHER` (Activity Manager
+operations, not input injection) still work fine for force-stop/relaunch
+and for deep-linking via the app's `habiteer://` scheme — confirmed
+`app.config.ts` already declares it. Used those to drive as much of the
+pass as could be automated:
+
+- Force-stopped + relaunched the app (`monkey -c LAUNCHER`) — cold boot,
+  clean landing on Today, no crash.
+- Deep-linked (`am start -a VIEW -d "habiteer:///<route>"`) to `/quests`,
+  `/stats`, `/cosmetics`, `/profile` — every one rendered correctly with
+  real data, no crash, confirmed via `adb logcat` (zero fatal/
+  AndroidRuntime/JS-exception lines across the entire pass):
+  - **Today**: 3/3 done, LevelBar showing "220 / 246 XP" (the new
+    `AnimatedNumber`-backed text renders correctly at rest), coin badge,
+    DONE!/RESISTED! stamps on the reduce-framing habit — all correct final
+    states (motion itself can't be confirmed from a still frame, see below).
+  - **Quests**: real live data matching `featuredQuestStatus`'s intended
+    behavior exactly — Busy Bee 15/15 unclaimed ("Claim +40"), Steady 4/5
+    in progress, Coin Rush 200/200 already claimed ("Claimed ✓") — this is
+    the same data Phase Q's widget rewire now reads from, so seeing it
+    correct here is real (if indirect) confirmation the underlying quest
+    logic is sound.
+  - **Cosmetics**: all three `EquipPop`-wrapped sections (avatar color,
+    title, card skin) render their locked/equipped states correctly.
+  - **Profile**: stats grid, Settings toggles (Sound/Haptics/Reminders all
+    on, matching the real wiring corrected in the Phase-U-adjacent
+    comment fix), no stale "stub" language.
+  - **Stats**: coin bar chart + per-habit list at 100% each — confirms the
+    `?? "week"` period-fallback fix didn't regress normal day-period habit
+    rendering.
+- Tried to reach the home screen to check the actual Quest/Combo **widgets**
+  (not just the in-app quests screen) — blocked: with input injection
+  dead, there's no way to swipe between launcher pages, and the one page
+  reachable via the HOME intent didn't have them. **Not verified this
+  round** — genuinely open whether the widget renders correctly, not
+  simulated as passing.
+
+### What this pass could NOT verify, stated plainly rather than assumed fine
+- **Every interactive motion/haptic piece** — button squash/sink-press,
+  Modal's real enter+exit animation, `TrackablePanel`'s field-error shake,
+  `EquipPop`'s pop-on-equip trigger, quest-claim confetti, tab cross-fade,
+  screen push/pop, and all haptics — every one of these requires an actual
+  tap to trigger, which this device's shell can no longer perform at all.
+  A screenshot only ever catches a rest frame; motion and touch feedback
+  aren't just hard to catch mid-frame here, they're structurally
+  untriggerable by this session right now.
+- **`IdleEmber`'s bob+peek loop** — the empty state it lives in didn't
+  render (there are 3 real habits on this account), and reaching it would
+  need archiving them all, which needs taps.
+- **The notification tap-handler** — needs either a real scheduled
+  reminder firing or a manually-constructed test notification; not set up
+  this round.
+- **The home-screen Quest/Combo widgets themselves**, per above.
+
+This is a real, if partial, verification pass — crash-free across five
+screens with a genuinely fresh bundle is worth something, but it is NOT
+equivalent to a full interactive check. Flagged honestly rather than
+rounded up to "device-verified," matching this project's standing
+convention.
