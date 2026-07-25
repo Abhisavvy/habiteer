@@ -12,6 +12,9 @@ import { loadFeedbackSettings } from "@/features/feedback/feedback";
 import { ConnectionToast } from "@/components/ConnectionToast";
 import { isConnectionError } from "@/features/system/connection";
 import { useConnectionToast } from "@/features/system/connectionToast";
+import { useTrackablesQuery } from "@/features/trackables/useTrackables";
+import { useReminderSync } from "@/features/reminders/useReminderSync";
+import { useNotificationTapHandler } from "@/features/reminders/useNotificationTap";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -25,9 +28,19 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// A session that never happens to land on Today used to never resync its
+// reminders — mounted here instead, gated on `session` so it never fetches
+// trackables (or schedules anything) while signed out.
+function ReminderSyncMount() {
+  const { data: trackables } = useTrackablesQuery();
+  useReminderSync(trackables);
+  return null;
+}
+
 export default function RootLayout() {
   const { session, ready, init } = useAuth();
   const segments = useSegments();
+  useNotificationTapHandler();
   // A dropped/unreachable server surfaces as a global "not saved" banner
   // (see ConnectionToast). Only network-flavored failures trigger it, so
   // ordinary validation/business errors stay on their own specific handlers.
@@ -84,9 +97,17 @@ export default function RootLayout() {
       ) : session && inAuthGroup ? (
         <Redirect href="/(tabs)" />
       ) : (
-        <Stack screenOptions={{ headerShown: false }} />
+        // Android-only per react-navigation's own docs (resolves to that
+        // platform's default on iOS anyway) — makes the stack's push/pop
+        // transition an explicit choice instead of an unstated "default".
+        // `animationDuration` isn't usable here: react-navigation documents
+        // it as iOS-only, and not for "default"/Android-specific animations
+        // like this one — Android's transition duration isn't independently
+        // tunable through this API, stated rather than faked.
+        <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }} />
       )}
       {!splashDone && <AppSplash onDone={() => setSplashDone(true)} />}
+      {session && <ReminderSyncMount />}
       <ConnectionToast />
     </QueryClientProvider>
   );

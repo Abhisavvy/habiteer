@@ -24,11 +24,14 @@ import { LevelUpOverlay } from "@/features/completions/components/LevelUpOverlay
 import { UndoToast } from "@/features/completions/components/UndoToast";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { HardShadow } from "@/components/HardShadow";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { StaggerItem } from "@/components/StaggerItem";
 import { Ember } from "@/components/Ember";
+import { IdleEmber } from "@/components/IdleEmber";
 import { Halftone } from "@/components/Halftone";
 import { useProfileQuery } from "@/features/profile/useProfile";
 import { cardSkinFor } from "@/features/cosmetics/catalog";
-import { useReminderSync } from "@/features/reminders/useReminderSync";
+import { useReminderTap } from "@/features/navigation/reminderTap";
 import { feedbackComplete, feedbackLevelUp } from "@/features/feedback/feedback";
 
 type PanelState = { mode: "add" } | { mode: "edit"; trackable: Trackable } | null;
@@ -52,7 +55,16 @@ export default function Home() {
   const lastKnownLevel = useRef<number | null>(null);
   const lastKnownFreeze = useRef<number | null>(null);
 
-  useReminderSync(trackables);
+  // Opens a habit's edit panel when its reminder notification was tapped
+  // (set by useNotificationTapHandler at the app root, cleared here).
+  const reminderTapId = useReminderTap((s) => s.trackableId);
+  const setReminderTapId = useReminderTap((s) => s.setTrackableId);
+  useEffect(() => {
+    if (!reminderTapId || !trackables) return;
+    const match = trackables.find((t) => t.id === reminderTapId);
+    if (match) setPanel({ mode: "edit", trackable: match });
+    setReminderTapId(null);
+  }, [reminderTapId, trackables]);
 
   const todayStr = today();
   const dueToday = trackables ? filterDueToday(trackables, todayStr) : [];
@@ -115,7 +127,9 @@ export default function Home() {
           </Pressable>
           <Text style={styles.logo}>HABITEER</Text>
           <HardShadow style={styles.coinBadge}>
-            <Text style={styles.coinText}>🪙 {coinBalance ?? 0}</Text>
+            <Text style={styles.coinText}>
+              🪙 <AnimatedNumber value={coinBalance ?? 0} />
+            </Text>
           </HardShadow>
           <View style={styles.freezeBadge}>
             <Text style={styles.freezeText}>❄️ {freezeBalance ?? 0}</Text>
@@ -153,7 +167,7 @@ export default function Home() {
 
         {!isLoading && !error && trackables?.length === 0 && !panel && (
           <View style={styles.empty}>
-            <Ember size={72} expression="sleepy" />
+            <IdleEmber size={72} />
             <Text style={styles.emptyTitle}>No habits yet</Text>
             <Text style={styles.emptyBody}>Add your first habit and start stacking streaks.</Text>
             <HardShadow style={styles.emptyBtn} onPress={() => setPanel({ mode: "add" })}>
@@ -166,16 +180,17 @@ export default function Home() {
           {dueToday.map((t, i) => {
             const status = dueStatuses[i];
             return (
-              <TrackableCard
-                key={t.id}
-                trackable={t}
-                status={status}
-                skinBg={cardSkinFor(profile?.cardSkin).bg}
-                completing={completeMutation.isPending || undoMutation.isPending}
-                onEdit={() => setPanel({ mode: "edit", trackable: t })}
-                onArchive={() => setDeleteConfirm({ trackable: t, streak: status.streak })}
-                onToggleComplete={(x, y) => handleToggleComplete(t, status.isDoneToday, { x, y })}
-              />
+              <StaggerItem key={t.id} index={i}>
+                <TrackableCard
+                  trackable={t}
+                  status={status}
+                  skinBg={cardSkinFor(profile?.cardSkin).bg}
+                  completing={completeMutation.isPending || undoMutation.isPending}
+                  onEdit={() => setPanel({ mode: "edit", trackable: t })}
+                  onArchive={() => setDeleteConfirm({ trackable: t, streak: status.streak })}
+                  onToggleComplete={(x, y) => handleToggleComplete(t, status.isDoneToday, { x, y })}
+                />
+              </StaggerItem>
             );
           })}
         </View>
