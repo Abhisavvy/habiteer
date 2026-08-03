@@ -1,6 +1,41 @@
 import { daysBetween, nextDay, weekday, type ISODate } from "@/features/gamification/dates";
+import { GOAL_CHECKPOINT_COUNT, GOAL_BONUS_PCT } from "@/features/gamification/constants";
 import type { Completion } from "@/features/completions/api";
 import type { Goal } from "./api";
+
+/**
+ * Completions needed to reach checkpoint `i` (1-based) of a pledge.
+ *
+ * Rounds UP, and the SQL mirror MUST be written `ceil(target * i / 4.0)` — in
+ * Postgres `target * i / 4` is integer division that truncates BEFORE `ceil`
+ * ever runs, making `ceil` a no-op. For target 10 that would give thresholds
+ * 2,5,7,10 instead of 3,5,8,10, i.e. the server paying the first checkpoint a
+ * completion earlier than the UI promised.
+ */
+export function checkpointThreshold(targetCount: number, i: number): number {
+  return Math.ceil((targetCount * i) / GOAL_CHECKPOINT_COUNT);
+}
+
+/**
+ * CUMULATIVE stake returned after banking `n` checkpoints. Deliberately
+ * cumulative rather than per-checkpoint: an actual payout is always
+ * `total(n) - total(alreadyBanked)`, so banking three checkpoints in one call
+ * can never drift from banking them one at a time.
+ *
+ * The final checkpoint trues up the remainder, so the four payouts sum to
+ * EXACTLY the stake for any integer stake — no coins created or destroyed
+ * (stake 50 → 12, 12, 12, 14).
+ */
+export function checkpointPayoutTotal(stakedCoins: number, n: number): number {
+  if (n <= 0) return 0;
+  if (n >= GOAL_CHECKPOINT_COUNT) return stakedCoins;
+  return n * Math.floor(stakedCoins / GOAL_CHECKPOINT_COUNT);
+}
+
+/** Bonus paid on top of the returned stake for completing the pledge. */
+export function completionBonus(stakedCoins: number): number {
+  return Math.round(stakedCoins * GOAL_BONUS_PCT);
+}
 
 export type { Goal } from "./api";
 export type GoalState = "upcoming" | "active" | "met" | "missed";

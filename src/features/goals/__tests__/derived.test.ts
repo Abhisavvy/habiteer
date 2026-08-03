@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { goalStatus, maxAchievableInWindow, type Goal } from "../derived";
+import {
+  goalStatus,
+  maxAchievableInWindow,
+  checkpointThreshold,
+  checkpointPayoutTotal,
+  completionBonus,
+  type Goal,
+} from "../derived";
 import type { Completion } from "@/features/completions/api";
 
 function completion(overrides: Partial<Completion>): Completion {
@@ -86,5 +93,67 @@ describe("maxAchievableInWindow", () => {
     const t = { period: "week" as const, weekdays: null, quota: 3 };
     // a 14-day window spans 2 ISO weeks at most -> ceil(14/7)*3 = 6
     expect(maxAchievableInWindow(t, "2026-01-01", "2026-01-14")).toBe(6);
+  });
+});
+
+describe("checkpointThreshold", () => {
+  it("splits a target into COUNT rising thresholds, the last being the target", () => {
+    // target 20, 4 checkpoints -> 5, 10, 15, 20
+    expect([1, 2, 3, 4].map((i) => checkpointThreshold(20, i))).toEqual([5, 10, 15, 20]);
+  });
+
+  it("rounds UP so a non-divisible target never lets the last checkpoint land early", () => {
+    // target 10 -> ceil(2.5)=3, ceil(5)=5, ceil(7.5)=8, ceil(10)=10.
+    // The SQL mirror must use `/ 4.0`; integer division would give 2,5,7,10
+    // and pay the first checkpoint a completion early.
+    expect([1, 2, 3, 4].map((i) => checkpointThreshold(10, i))).toEqual([3, 5, 8, 10]);
+  });
+
+  it("always ends exactly on the target", () => {
+    for (const target of [8, 9, 13, 17, 20, 31, 100]) {
+      expect(checkpointThreshold(target, 4)).toBe(target);
+    }
+  });
+});
+
+describe("checkpointPayoutTotal / conservation", () => {
+  it("pays out exactly the stake once all checkpoints are banked, for every stake", () => {
+    // The whole point: banking all four returns the stake precisely — no coins
+    // created, none destroyed, regardless of divisibility.
+    for (const stake of [10, 11, 13, 25, 50, 99, 100, 137]) {
+      expect(checkpointPayoutTotal(stake, 4)).toBe(stake);
+    }
+  });
+
+  it("splits 50 as 12/12/12/14 — the last checkpoint trues up the remainder", () => {
+    const per = [1, 2, 3, 4].map((n) => checkpointPayoutTotal(50, n) - checkpointPayoutTotal(50, n - 1));
+    expect(per).toEqual([12, 12, 12, 14]);
+    expect(per.reduce((a, b) => a + b, 0)).toBe(50);
+  });
+
+  it("banks nothing at zero checkpoints", () => {
+    expect(checkpointPayoutTotal(50, 0)).toBe(0);
+  });
+
+  it("is cumulative, so banking several at once equals banking them one by one", () => {
+    // Guards the multi-checkpoint path: payout = total(n) - total(banked).
+    const jumpStraightToThree = checkpointPayoutTotal(37, 3) - checkpointPayoutTotal(37, 0);
+    const oneAtATime =
+      (checkpointPayoutTotal(37, 1) - checkpointPayoutTotal(37, 0)) +
+      (checkpointPayoutTotal(37, 2) - checkpointPayoutTotal(37, 1)) +
+      (checkpointPayoutTotal(37, 3) - checkpointPayoutTotal(37, 2));
+    expect(jumpStraightToThree).toBe(oneAtATime);
+  });
+});
+
+describe("completionBonus", () => {
+  it("is half the stake at the default 50% rate", () => {
+    expect(completionBonus(50)).toBe(25);
+    expect(completionBonus(10)).toBe(5);
+  });
+
+  it("rounds a fractional bonus to a whole coin", () => {
+    expect(completionBonus(11)).toBe(6); // 5.5 -> 6
+    expect(completionBonus(13)).toBe(7); // 6.5 -> 7
   });
 });

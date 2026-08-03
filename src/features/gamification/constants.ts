@@ -82,3 +82,31 @@ export const QUESTS: QuestDef[] = [
   // Example limited-time EVENT (manually windowed); higher reward, this week only.
   { id: "weekend_warrior", metric: "completions", goal: 8, reward: 60, activeFrom: "2026-07-20", activeUntil: "2026-07-27" },
 ];
+
+/** Phase P — staked pledges on long-horizon goals (PLAN.md: the "goals don't
+ * connect to the player" rework). You stake coins to commit; four checkpoints
+ * pay the stake back in pieces as you progress; finishing returns the whole
+ * stake plus a bonus. Missing the window forfeits only what you never banked,
+ * so partial effort still gets partial credit — which matters because this app
+ * is otherwise deliberately gentle (freeze tokens, today-grace, no resets).
+ *
+ * Mirrored into SQL by gen-sql-constants.ts: the RPCs are authoritative, so
+ * these numbers MUST exist in both places or the server and the UI disagree
+ * about what a checkpoint is worth. */
+export const GOAL_CHECKPOINT_COUNT = 4;
+/** Completion bonus as a fraction of the stake (stake 50 → +25). */
+export const GOAL_BONUS_PCT = 0.5;
+/** Smallest stake worth the ceremony — also the floor for earning the title. */
+export const GOAL_STAKE_MIN = 10;
+/** Hard floor on a pledge's target, enforced in SQL as a CHECK.
+ *
+ * This is a coin-printer guard, not ergonomics: checkpoint i's threshold is
+ * ceil(target * i / COUNT), so at target 1 all four thresholds are 1 — a
+ * single completion would return the entire stake plus the bonus, repeatable
+ * daily. Must stay >= GOAL_CHECKPOINT_COUNT so the four thresholds are
+ * genuinely distinct. */
+export const GOAL_TARGET_MIN = 8;
+/** Shortest pledge window in days — a 1-day window with an 8× target is
+ * unreachable-by-construction, and unreachable is punitive once money is on
+ * the line. */
+export const GOAL_MIN_WINDOW_DAYS = 7;

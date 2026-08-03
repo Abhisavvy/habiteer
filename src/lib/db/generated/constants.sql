@@ -235,3 +235,84 @@ as $$
     else null::date
   end;
 $$;
+
+create or replace function public.goal_checkpoint_count()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select 4;
+$$;
+
+create or replace function public.goal_stake_min()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select 10;
+$$;
+
+create or replace function public.goal_target_min()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select 8;
+$$;
+
+create or replace function public.goal_min_window_days()
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select 7;
+$$;
+
+-- Completions needed to reach checkpoint p_i (1-based).
+-- The 4.0 is load-bearing: with an integer divisor Postgres truncates BEFORE
+-- ceil() runs, so ceil() becomes a no-op and target 10 would yield thresholds
+-- 2,5,7,10 instead of 3,5,8,10 — paying the first checkpoint one completion
+-- early, and disagreeing with Math.ceil in derived.ts.
+create or replace function public.goal_checkpoint_threshold(p_target int, p_i int)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select ceil(p_target::numeric * p_i / 4.0)::int;
+$$;
+
+-- CUMULATIVE stake returned after banking p_n checkpoints. An actual payout is
+-- always total(n) - total(already_banked), so banking several at once can never
+-- drift from banking them one at a time. The final checkpoint trues up the
+-- remainder, so all COUNT payouts sum to exactly the stake for any integer
+-- stake (50 -> 12,12,12,14) and no coins are created or destroyed.
+create or replace function public.goal_checkpoint_payout_total(p_staked int, p_n int)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select case
+    when p_n <= 0 then 0
+    when p_n >= 4 then p_staked
+    else p_n * (p_staked / 4)
+  end;
+$$;
+
+-- Bonus on top of the returned stake for completing the pledge.
+-- Cast to numeric so this rounds half-away-from-zero exactly like JS
+-- Math.round on the positive values we use; round(double) would diverge if
+-- GOAL_BONUS_PCT ever stops being .5.
+create or replace function public.goal_completion_bonus(p_staked int)
+returns int
+language sql
+immutable
+set search_path = public, pg_catalog
+as $$
+  select round(p_staked::numeric * 0.5)::int;
+$$;
