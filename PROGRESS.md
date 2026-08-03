@@ -1,5 +1,134 @@
 # PROGRESS
 
+## Phase R — Long-horizon goal reframe
+
+Resumes point 1 of the roadmap (research-backed wedges), parked while
+point 2 (Motion M2–M4 → notifications → quest coherence, all shipped and
+pushed) was in flight. Phase R is the #1 gap the deep-research pass
+surfaced: no goal/milestone entity, no cumulative counting, no expected-
+vs-actual pace, no lapsed-account detection. Two independent Explore/Plan
+sub-agent passes grounded the design in the actual code before writing the
+plan — one mapping exact UI/RLS conventions, one adversarially stress-
+testing the architecture (see the approved plan for the full critique).
+
+### Schema + DB
+- **New `goals` table** (`id, user_id, trackable_id, target_count,
+  starts_on, ends_on, created_at`) — not new columns on `trackables`,
+  matching this project's own convention for a bounded concept layered on
+  top (`freeze_tokens`, `quest_claims`, `league_standings` all took this
+  shape; `trackables` already carries enough). `db:push`'d cleanly.
+- **RLS**: plain own-row policy (`user_id = auth.uid()`) — no RPC. A goal
+  doesn't move coins or XP, it's a read-only lens over completions that
+  already happened, so it doesn't need `fn_claim_quest`-style
+  security-definer treatment.
+- **Real constraints, not just app-side checks**: `check (ends_on >=
+  starts_on)`, `check (target_count > 0)`, and — the Plan-agent review's
+  sharpest catch — a `btree_gist` EXCLUDE constraint
+  (`exclude using gist (trackable_id with =, daterange(starts_on, ends_on,
+  '[]') with &&)`) preventing two goals on the same trackable from having
+  overlapping windows. An app-side "does today already have an active
+  goal" check has a real gap: two future-dated goals that don't yet
+  overlap "today" would sail past it, and a client check-then-insert is a
+  TOCTOU race regardless. Verified behaviorally (not just "constraint
+  exists"): a live insert-then-overlapping-insert in a rolled-back
+  transaction confirmed the DB actually rejects it
+  (`conflicting key value violates exclusion constraint`).
+
+### Derived logic — TDD'd throughout, 22 new test cases
+- **`goals/derived.ts`**: `goalStatus(goal, completions, today)` — `state`
+  is `"met"` the instant progress reaches the target, even mid-window
+  (same as a weekly quest); `"missed"` only once `today` is genuinely past
+  `endsOn` (inclusive boundary — `today === endsOn` is still `"active"`,
+  explicitly tested). `maxAchievableInWindow` — a rough ceiling on what a
+  habit's own schedule could realistically produce in a window, used only
+  for a soft warning, never for `goalStatus`'s own math.
+- **`completions/derived.ts`**: `daysSinceLastActivity` — `null` for zero
+  completions ever (a brand-new user is never "lapsed"), explicit guard
+  rather than a number that would silently read as one.
+- **`dates.ts`**: `daysBetween`/`addDays` — extracted the day-diff
+  expression `app/quests.tsx`'s `daysLeft` already had inline (now needed
+  in 2+ places), added a symmetric `addDays` for computing a goal's
+  `endsOn` from a week-count preset.
+- **A real cross-module bug found and fixed mid-implementation**:
+  `expressionForStreak` (the broken-streak Ember mascot reaction, used by
+  all 3 widgets but zero in-app screens before this phase) got moved so
+  the in-app header could finally use it too — but moving it straight
+  into `components/Ember.tsx` broke `emberSvg.test.ts`'s dependency-free
+  isolation (that file is deliberately free of any `react-native-svg`
+  import, used in a headless RemoteViews context and unit-tested with
+  zero mocking; importing from `Ember.tsx` transitively pulled the native
+  module in, and the test suite failed with a cryptic `SyntaxError:
+  Unexpected token 'typeof'`). Fixed by giving the pure mapping its own
+  dependency-free module, `components/emberExpression.ts`, imported by
+  both `Ember.tsx` and `emberSvg.ts` independently — caught by actually
+  running the affected test, not assumed safe from reading the diff.
+
+### Client + UI
+- **`goals/api.ts`/`useGoals.ts`**: direct RLS-gated `supabase.from("goals")`
+  calls (no RPC, per the schema decision above) — `fetchGoals`/
+  `createGoal`/`deleteGoal`, mirroring `quests/api.ts`'s exact shape.
+- **`GoalPanel.tsx`** (new): built on the shared `Modal.tsx` shell (gets
+  M3's real enter/exit animation for free) rather than a bespoke full
+  panel like `TrackablePanel` — a target-count stepper + a 2/4/6/8-week
+  duration segmented control, matching `TrackablePanel`'s exact preset-
+  row/stepper-row convention. `startsOn` always defaults to today, not
+  editable in v1. Shows a soft, non-blocking warning (via
+  `maxAchievableInWindow`) if the target looks unreachable on the habit's
+  own schedule — cheap, and protects against the exact demotivating
+  failure mode this feature exists to fix.
+- **`app/stats.tsx`**: per-habit row gained a goal line — "Set a goal"
+  when none exists; a live pace readout ("🎯 6/10 · on pace" / "· behind
+  pace") plus a "Remove" link while active; a final "Goal met!
+  🎉"/"Goal ended" plus "Set a new goal" once it's over. The "set a new
+  goal" path deletes the old goal first — a `"met"` goal's window often
+  hasn't ENDED yet (met mid-window, same as a quest), so its row would
+  still overlap a fresh goal starting today and the EXCLUDE constraint
+  would reject it otherwise.
+- **`TrackableCard.tsx`**: one more glance-only pill (gold, matching the
+  existing period-progress badge style) showing live progress — but ONLY
+  when the caller passes a goal in its `"active"` state; upcoming/met/
+  missed stay Stats-only, not a persistent daily-card badge.
+- **`app/(tabs)/index.tsx`**: the header `<Ember>` — previously always
+  `expression="neutral"` by omission, reaching zero in-app screens despite
+  `expressionForStreak` existing for widgets — now reflects
+  `Math.max(0, ...dueStatuses.map(s => s.streak))`, the same "best current
+  streak" signal the widgets already use (zero new logic needed, that
+  value was already being computed there). Separately, and deliberately
+  decoupled (per the Plan-agent review — streak length and dormancy don't
+  mean the same thing; feeding one into the other would show "sleepy" for
+  both a brand-new day-1 account and a 40-day-dormant one): a "👋 Welcome
+  back" line appears under the level bar once `daysSinceLastActivity`
+  crosses 3 days, independent of today's specific due list.
+
+### Explicitly out of v1 (per the approved plan)
+No bonus reward for meeting a goal (stays a read-only lens, not a new
+payout surface). No multi-trackable/composite goals. No auto-renewal.
+No editing an in-progress goal — delete + recreate. An archived
+trackable's goal becomes an inert orphan (same as archived habits already
+vanishing from Stats/Today) rather than being auto-closed.
+
+### Verification
+- `npx tsc --noEmit` clean throughout.
+- `npx vitest run`: **170/173** (151 prior baseline + 22 new TDD'd cases
+  across `dates.test.ts`, `completions/__tests__/derived.test.ts`,
+  `goals/__tests__/derived.test.ts`), same 3 pre-existing live-DB-drift
+  failures as every round this session, no regressions.
+- RLS + constraints verified directly against the live DB: `relrowsecurity
+  = true`, `own goals` policy present, both CHECK constraints and the
+  EXCLUDE constraint present by name, and the EXCLUDE constraint's actual
+  rejection behavior confirmed live (in a rolled-back transaction, no
+  data persisted).
+- **No device pass this round** — the physical device wasn't connected at
+  all this time (the adb daemon itself wasn't running), a step further
+  than every prior round's "partial, input-injection-blocked" pass. Stated
+  plainly: nothing about this phase's actual on-device rendering or feel
+  has been checked yet.
+- **Not committed** — pending either a device pass or the user's explicit
+  go to commit without one, same standing convention as every phase since
+  M2. This closes out point 1 of the roadmap's Phase R item (Phase R2,
+  the small pre-commitment-ritual wedge, and point 3 — parked for hard
+  launch — remain).
+
 ## Phase 1 — Scaffold + Auth  (done)
 Done
 - Repo scaffold: Expo Router, TypeScript strict, path alias `@/`, Vitest.

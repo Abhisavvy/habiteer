@@ -113,6 +113,20 @@ export const rewards = pgTable("rewards", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const goals = pgTable("goals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => profiles.id),
+  trackableId: uuid("trackable_id").notNull().references(() => trackables.id),
+  targetCount: integer("target_count").notNull(),
+  startsOn: date("starts_on").notNull(),
+  endsOn: date("ends_on").notNull(), // inclusive
+  createdAt: timestamp("created_at").defaultNow(),
+});
+// CHECK (ends_on >= starts_on), CHECK (target_count > 0), and a btree_gist
+// EXCLUDE constraint preventing two goals on the same trackable from having
+// overlapping [starts_on, ends_on] windows are applied via rls.sql (not
+// expressible in drizzle's schema DSL) — see rls.sql's "goals" section.
+
 export const rewardContributions = pgTable("reward_contributions", {
   id: uuid("id").primaryKey().defaultRandom(),
   rewardId: uuid("reward_id").notNull().references(() => rewards.id),

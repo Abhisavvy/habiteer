@@ -1,4 +1,6 @@
-export type EmberExpression = "neutral" | "celebrate" | "sleepy";
+import { expressionForStreak, type EmberExpression } from "@/components/emberExpression";
+
+export { expressionForStreak, type EmberExpression };
 
 /**
  * Ember — the P2 "comic-book" redesign's flame-drop mascot (ember-orange
@@ -13,12 +15,19 @@ export type EmberExpression = "neutral" | "celebrate" | "sleepy";
  * the Companion widget it's used in is square too, so AndroidSVG's
  * letterbox-on-mismatched-aspect behavior never triggers.
  *
- * Only the widget suite's copy of Ember is updated here — this file has
- * always been a RemoteViews-only port, separate from `components/
- * Ember.tsx`'s in-app version. That in-app version (and anywhere else it
- * appears) still uses the older design; bringing the rest of the app in
- * line with this same P2 mascot update is a separate, larger pass than
- * "fix the widget suite," out of scope here.
+ * Only the widget suite's copy of Ember's VISUAL rendering is updated here
+ * — this file has always been a RemoteViews-only port, separate from
+ * `components/Ember.tsx`'s in-app version (which still uses the older
+ * design; bringing the rest of the app in line with this same P2 mascot
+ * update is a separate, larger pass than "fix the widget suite," out of
+ * scope here). `expressionForStreak`/`EmberExpression` themselves are NOT
+ * duplicated, though — they're pure streak→mood mappings with no
+ * RemoteViews coupling, so they live once in `components/emberExpression.ts`
+ * (deliberately NOT inside `components/Ember.tsx`, which imports
+ * react-native-svg — importing from there would drag that native-module
+ * dependency chain into this file's otherwise dependency-free unit tests)
+ * and are re-exported here, so the widget and the in-app mascot can't
+ * drift on what a given streak means even while looking different.
  */
 export function emberSvg(expression: EmberExpression = "neutral"): string {
   const eyes =
@@ -39,15 +48,4 @@ export function emberSvg(expression: EmberExpression = "neutral"): string {
     ${eyes}
     ${mouth}
   </svg>`;
-}
-
-/** Streak → expression tier. 0 = Ember's sleepy (nothing done yet today's
- * habits haven't built momentum); 1–6 = neutral; 7+ = celebrate — 7 matches
- * the app's own first COMBO_TIERS threshold (gamification/constants.ts), so
- * "Ember's excited" lines up with the same streak length that already
- * unlocks a real in-app reward, not an arbitrary new number. */
-export function expressionForStreak(streak: number): EmberExpression {
-  if (streak <= 0) return "sleepy";
-  if (streak >= 7) return "celebrate";
-  return "neutral";
 }

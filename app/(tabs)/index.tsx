@@ -17,7 +17,7 @@ import {
   useCompleteTrackable,
   useUndoCompletion,
 } from "@/features/completions/useCompletions";
-import { trackableStatus, overallProgress } from "@/features/completions/derived";
+import { trackableStatus, overallProgress, daysSinceLastActivity } from "@/features/completions/derived";
 import { LevelBar } from "@/features/completions/components/LevelBar";
 import { useFloatingXp, FloatingXpOverlay } from "@/features/completions/components/FloatingXp";
 import { LevelUpOverlay } from "@/features/completions/components/LevelUpOverlay";
@@ -26,13 +26,17 @@ import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { HardShadow } from "@/components/HardShadow";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { StaggerItem } from "@/components/StaggerItem";
-import { Ember } from "@/components/Ember";
+import { Ember, expressionForStreak } from "@/components/Ember";
 import { IdleEmber } from "@/components/IdleEmber";
 import { Halftone } from "@/components/Halftone";
 import { useProfileQuery } from "@/features/profile/useProfile";
 import { cardSkinFor } from "@/features/cosmetics/catalog";
 import { useReminderTap } from "@/features/navigation/reminderTap";
 import { feedbackComplete, feedbackLevelUp } from "@/features/feedback/feedback";
+import { useGoalsQuery } from "@/features/goals/useGoals";
+import { goalStatus } from "@/features/goals/derived";
+
+const LAPSED_DAYS_THRESHOLD = 3;
 
 type PanelState = { mode: "add" } | { mode: "edit"; trackable: Trackable } | null;
 
@@ -42,6 +46,7 @@ export default function Home() {
   const { data: profile } = useProfileQuery();
   const { data: coinBalance } = useCoinBalanceQuery();
   const { data: freezeBalance } = useFreezeBalanceQuery();
+  const { data: goals } = useGoalsQuery();
   const createMutation = useCreateTrackable();
   const updateMutation = useUpdateTrackable();
   const archiveMutation = useArchiveTrackable();
@@ -117,13 +122,24 @@ export default function Home() {
   const doneCount = dueStatuses.filter((s) => s.isDoneToday).length;
   const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
 
+  // Ember's mood reflects the best CURRENT streak across today's habits —
+  // the same signal the widgets already use (expressionForStreak), just
+  // never wired into this in-app header before.
+  const topCurrentStreak = Math.max(0, ...dueStatuses.map((s) => s.streak));
+
+  // A distinct, separate signal from the mascot's mood: how long since the
+  // account did anything at all, regardless of today's specific due list.
+  // `null` (no completions ever) is never "lapsed" — that's just a new user.
+  const daysSince = daysSinceLastActivity(allCompletions, todayStr);
+  const isLapsed = daysSince !== null && daysSince >= LAPSED_DAYS_THRESHOLD;
+
   return (
     <View style={styles.root}>
       <Halftone color={theme.color.ink} opacity={0.1} id="today-bg" />
       <View style={styles.header}>
         <View style={styles.topRow}>
           <Pressable style={styles.mascotTile} onPress={() => router.navigate("/profile")} aria-label="Open profile">
-            <Ember size={40} />
+            <Ember size={40} expression={expressionForStreak(topCurrentStreak)} />
           </Pressable>
           <Text style={styles.logo}>HABITEER</Text>
           <HardShadow style={styles.coinBadge}>
@@ -136,6 +152,7 @@ export default function Home() {
           </View>
         </View>
         <LevelBar level={progress.level} intoLevel={progress.intoLevel} need={progress.need} />
+        {isLapsed && <Text style={styles.welcomeBack}>👋 Welcome back — pick up where you left off.</Text>}
         <View style={styles.dateRow}>
           <Text style={styles.dateLabel}>{dateLabel}</Text>
           {dueToday.length > 0 && (
@@ -179,6 +196,9 @@ export default function Home() {
         <View style={styles.list}>
           {dueToday.map((t, i) => {
             const status = dueStatuses[i];
+            const goalRow = (goals ?? []).find((g) => g.trackableId === t.id);
+            const gStatus = goalRow ? goalStatus(goalRow, allCompletions, todayStr) : null;
+            const goalChip = gStatus?.state === "active" ? { progress: gStatus.progress, targetCount: gStatus.goal.targetCount } : null;
             return (
               <StaggerItem key={t.id} index={i}>
                 <TrackableCard
@@ -189,6 +209,7 @@ export default function Home() {
                   onEdit={() => setPanel({ mode: "edit", trackable: t })}
                   onArchive={() => setDeleteConfirm({ trackable: t, streak: status.streak })}
                   onToggleComplete={(x, y) => handleToggleComplete(t, status.isDoneToday, { x, y })}
+                  goalChip={goalChip}
                 />
               </StaggerItem>
             );
@@ -313,6 +334,7 @@ const styles = StyleSheet.create({
   freezeText: { fontWeight: "700", fontSize: 12, color: theme.on.info, fontFamily: fonts.mono700 },
   dateRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
   dateLabel: { fontSize: 16, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.display700 },
+  welcomeBack: { fontSize: 12.5, fontWeight: "700", color: theme.color.hero, fontFamily: fonts.display600, marginTop: 4 },
   doneCountPill: {
     borderWidth: theme.borders.hairline,
     borderColor: theme.color.ink,

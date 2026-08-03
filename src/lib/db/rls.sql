@@ -242,3 +242,33 @@ create policy "own profile" on profiles for all
     and caller_level() >= title_unlock_level(title_id)
     and caller_level() >= card_skin_unlock_level(card_skin)
   );
+
+-- Phase R: long-horizon goals. A goal is a read-only lens over completions
+-- that already happened — it doesn't move coins or XP, so (unlike anything
+-- that touches the economy) it needs no security-definer RPC, just a plain
+-- own-row policy, same shape as league_standings/quest_claims above.
+alter table goals enable row level security;
+
+drop policy if exists "own goals" on goals;
+create policy "own goals" on goals for all
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+-- Basic sanity constraints — cheap, and catch a malformed row from any
+-- direct REST call, not just this app's own form validation.
+alter table goals drop constraint if exists goals_ends_on_after_starts_on;
+alter table goals add constraint goals_ends_on_after_starts_on check (ends_on >= starts_on);
+
+alter table goals drop constraint if exists goals_target_count_positive;
+alter table goals add constraint goals_target_count_positive check (target_count > 0);
+
+-- At most one goal per trackable with an overlapping [starts_on, ends_on]
+-- window — enforced as a real constraint, not just an app-side check-then-
+-- insert (which can't see two future-dated goals that don't yet overlap
+-- "today", and is a TOCTOU race regardless). btree_gist lets a GiST
+-- exclusion constraint use "=" alongside the range-overlap operator.
+create extension if not exists btree_gist;
+
+alter table goals drop constraint if exists goals_no_overlapping_windows;
+alter table goals add constraint goals_no_overlapping_windows
+  exclude using gist (trackable_id with =, daterange(starts_on, ends_on, '[]') with &&);

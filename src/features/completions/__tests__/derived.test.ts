@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { trackableStatus, overallProgress } from "../derived";
+import { trackableStatus, overallProgress, daysSinceLastActivity } from "../derived";
 import type { Trackable } from "@/features/trackables/api";
 import type { Completion } from "../api";
 
@@ -86,5 +86,24 @@ describe("overallProgress", () => {
     expect(progress.totalXp).toBe(100);
     expect(progress.level).toBe(2);
     expect(progress.intoLevel).toBe(0);
+  });
+});
+
+describe("daysSinceLastActivity", () => {
+  it("is null for an account with no completions ever — not lapsed, just new", () => {
+    expect(daysSinceLastActivity([], "2026-01-10")).toBeNull();
+  });
+
+  it("is 0 when the most recent completion was today", () => {
+    const completions = [completion({ completedOn: "2026-01-08" }), completion({ completedOn: "2026-01-10" })];
+    expect(daysSinceLastActivity(completions, "2026-01-10")).toBe(0);
+  });
+
+  it("counts days since the most recent completion across all trackables", () => {
+    const completions = [
+      completion({ trackableId: "a", completedOn: "2026-01-01" }),
+      completion({ trackableId: "b", completedOn: "2026-01-05" }),
+    ];
+    expect(daysSinceLastActivity(completions, "2026-01-10")).toBe(5);
   });
 });

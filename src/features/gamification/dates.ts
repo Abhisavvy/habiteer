@@ -54,3 +54,15 @@ export function nextPeriodStart(periodStart: ISODate, period: "week" | "month"):
   }
   return d.toISOString().slice(0, 10);
 }
+
+/** Whole days from `a` to `b` (positive if `b` is later). UTC-anchored, matching every other date helper here. */
+export function daysBetween(a: ISODate, b: ISODate): number {
+  return Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000);
+}
+
+/** `date` shifted by `days` (negative to go backward). UTC-anchored, matching every other date helper here. */
+export function addDays(date: ISODate, days: number): ISODate {
+  const d = new Date(date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}

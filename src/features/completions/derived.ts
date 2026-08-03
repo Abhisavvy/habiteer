@@ -1,7 +1,7 @@
 import { currentStreak, periodProgress } from "@/features/gamification/streak";
 import { comboMultiplier } from "@/features/gamification/combo";
 import { levelInfo } from "@/features/gamification/xp";
-import type { ISODate } from "@/features/gamification/dates";
+import { daysBetween, type ISODate } from "@/features/gamification/dates";
 import type { Trackable } from "@/features/trackables/api";
 import type { Completion } from "./api";
 
@@ -38,4 +38,13 @@ export function overallProgress(completions: Completion[]): OverallProgress {
   const totalXp = completions.reduce((sum, c) => sum + c.xpEarned, 0);
   const { level, intoLevel, need } = levelInfo(totalXp);
   return { totalXp, level, intoLevel, need };
+}
+
+/** Days since the most recent completion across ALL trackables — `null` for
+ * an account with no completions ever (a brand-new user is not "lapsed",
+ * explicit guard rather than defaulting to a number that would read as one). */
+export function daysSinceLastActivity(completions: Completion[], today: ISODate): number | null {
+  if (completions.length === 0) return null;
+  const lastDate = completions.reduce((max, c) => (c.completedOn > max ? c.completedOn : max), completions[0].completedOn);
+  return daysBetween(lastDate, today);
 }

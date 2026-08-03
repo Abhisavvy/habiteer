@@ -11,13 +11,9 @@ import { useQuestClaimsQuery, useClaimQuest } from "@/features/quests/useQuests"
 import { activeQuestStatuses } from "@/features/quests/derived";
 import { questCopy } from "@/features/quests/catalog";
 import { today } from "@/features/trackables/today";
-import { weekStart } from "@/features/gamification/dates";
+import { weekStart, daysBetween } from "@/features/gamification/dates";
 
 const CLAIM_CONFETTI_MS = 900;
-
-function daysLeft(untilISO: string, todayISO: string): number {
-  return Math.round((Date.parse(untilISO + "T00:00:00Z") - Date.parse(todayISO + "T00:00:00Z")) / 86400000);
-}
 
 export default function Quests() {
   const { data: completions, isLoading } = useCompletionsQuery();
@@ -59,7 +55,7 @@ export default function Quests() {
             const claimed = claimedThisWeek.has(quest.id);
             const pct = Math.max(0, Math.min(1, progress / goal));
             const isEvent = !!quest.activeUntil;
-            const left = quest.activeUntil ? daysLeft(quest.activeUntil, todayStr) : 0;
+            const left = quest.activeUntil ? daysBetween(todayStr, quest.activeUntil) : 0;
             return (
               <HardShadow key={quest.id} style={[styles.card, isEvent && styles.cardEvent]}>
                 {quest.id === justClaimed && <Confetti count={12} duration={CLAIM_CONFETTI_MS - 100} />}

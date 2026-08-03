@@ -43,6 +43,7 @@ export function TrackableCard({
   onToggleComplete,
   completing,
   skinBg,
+  goalChip,
 }: {
   trackable: Trackable;
   status: TrackableStatus;
@@ -51,6 +52,11 @@ export function TrackableCard({
   onToggleComplete: (pageX: number, pageY: number) => void;
   completing?: boolean;
   skinBg?: string;
+  /** An active long-horizon goal's progress, if one exists — glance-only,
+   * like the other pills here. The caller (Today) decides when to pass
+   * this (only for a goal in its "active" state; upcoming/met/missed are
+   * Stats' job, not a persistent daily-card badge). */
+  goalChip?: { progress: number; targetCount: number } | null;
 }) {
   const tint = DIFF_TINT[trackable.difficulty];
   const lightTint = DIFF_LIGHT_TINT[trackable.difficulty];
@@ -149,6 +155,13 @@ export function TrackableCard({
           {projectedCombo > 1 && (
             <View style={styles.comboBadge}>
               <Text style={styles.comboText}>×{projectedCombo}</Text>
+            </View>
+          )}
+          {goalChip && (
+            <View style={styles.progressBadge}>
+              <Text style={styles.progressText}>
+                🎯 {goalChip.progress}/{goalChip.targetCount}
+              </Text>
             </View>
           )}
         </View>

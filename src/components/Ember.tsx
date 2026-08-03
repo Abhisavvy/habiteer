@@ -1,4 +1,8 @@
 import Svg, { Path, Ellipse, Circle } from "react-native-svg";
+import type { EmberExpression } from "./emberExpression";
+
+export type { EmberExpression } from "./emberExpression";
+export { expressionForStreak } from "./emberExpression";
 
 /**
  * Ember — the app's comic-RPG companion mascot (P2, mascot-1). A purple flame
@@ -9,7 +13,7 @@ import Svg, { Path, Ellipse, Circle } from "react-native-svg";
  * `expression` swaps the eyes/mouth for celebrate / sleepy states (used on
  * level-up and on a missed-day empty state); default is neutral.
  */
-export function Ember({ size = 96, expression = "neutral" }: { size?: number; expression?: "neutral" | "celebrate" | "sleepy" }) {
+export function Ember({ size = 96, expression = "neutral" }: { size?: number; expression?: EmberExpression }) {
   const s = 4.5;
   return (
     <Svg width={size} height={size} viewBox="0 0 130 130">
