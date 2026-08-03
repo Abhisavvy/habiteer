@@ -30,6 +30,7 @@ import {
   getProfileCosmetics,
   resetCosmetics,
   cleanupQuests,
+  sweepLedgerRow,
 } from "./testClient";
 
 beforeAll(async () => {
@@ -906,5 +907,112 @@ describe("fn_claim_quest", () => {
     // (The shared account may carry a few completions this week, but not 15 after cleanups.)
     const { error } = await testClient.rpc("fn_claim_quest", { p_quest_id: "busy_bee" });
     expect(error).not.toBeNull();
+  });
+});
+
+// Phase S — the economy's privilege boundary. These are the highest-value
+// tests in this file: they assert that the tables carrying money, XP and
+// capability gates are NOT writable by an ordinary authenticated client, so
+// every mutation has to go through an RPC that enforces the game's rules.
+//
+// Before Phase S all four of these FAILED — a signed-in user could mint
+// 999,999 coins, forge a completion with arbitrary xp_earned, and set their
+// own freeze balance, via a single PostgREST call. Verified live, not
+// theorised. If any of these ever passes an insert again, the whole economy
+// is advisory and every level gate (groups L3, recurrence L5, cosmetics) is
+// forgeable, since they all derive from sum(xp_earned).
+describe("economy integrity — client write paths must be closed", () => {
+  it("rejects a direct coin_ledger insert (no minting coins)", async () => {
+    const { data: user } = await testClient.auth.getUser();
+    const before = await ledgerBalance();
+    // `select()` so a row that DOES slip through comes back with its id and can
+    // be swept in the finally. Learned the hard way: the first (red) run of
+    // this test, before the policy was fixed, inserted successfully, failed its
+    // assertion, and left 999,999 coins sitting in the shared test account. A
+    // security test has to clean up the thing it's proving is impossible.
+    const { data: leaked, error } = await testClient
+      .from("coin_ledger")
+      .insert({ user_id: user.user!.id, delta: 999999, kind: "earn" })
+      .select()
+      .maybeSingle();
+    try {
+      expect(error).not.toBeNull();
+      expect(await ledgerBalance()).toBe(before);
+    } finally {
+      if (leaked?.id) await sweepLedgerRow(leaked.id);
+    }
+  });
+
+  it("rejects a direct completions insert (no forging XP, streaks or level gates)", async () => {
+    const t = await makeTrackable({ kind: "habit" });
+    try {
+      const { data: user } = await testClient.auth.getUser();
+      const { error } = await testClient.from("completions").insert({
+        trackable_id: t.id,
+        user_id: user.user!.id,
+        completed_on: "2019-01-01",
+        xp_earned: 999999,
+        coins_earned: 0,
+        streak_after: 999,
+      });
+      expect(error).not.toBeNull();
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("rejects a direct freeze_tokens write (no self-granting streak protection)", async () => {
+    // Asserted by EFFECT, not by error: with no permissive UPDATE policy,
+    // PostgREST reports success but the statement matches zero rows (only
+    // INSERT raises an RLS violation). "Balance unchanged" is the real
+    // security property, and checking it this way would also catch a future
+    // policy that let the write through silently.
+    const { data: user } = await testClient.auth.getUser();
+    await setFreezeBalance(2);
+    const { error } = await testClient
+      .from("freeze_tokens")
+      .update({ balance: 99 })
+      .eq("user_id", user.user!.id);
+    expect(error).toBeNull(); // no error…
+    expect(await getFreezeBalance()).toBe(2); // …but no write either
+  });
+
+  it("rejects a direct freeze_tokens insert for a user with no row yet", async () => {
+    // The INSERT path does raise, so assert the error here.
+    const { data: user } = await testClient.auth.getUser();
+    const { error } = await testClient
+      .from("freeze_tokens")
+      .insert({ user_id: user.user!.id, balance: 99 });
+    expect(error).not.toBeNull();
+  });
+
+  it("rejects a direct quest_claims insert (no claiming a reward without earning it)", async () => {
+    const { data: user } = await testClient.auth.getUser();
+    const { error } = await testClient.from("quest_claims").insert({
+      user_id: user.user!.id,
+      quest_id: "busy_bee",
+      week: weekStart(todayUTC()),
+      reward: 40,
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("still completes and undoes normally through the RPCs", async () => {
+    // The boundary must not break the real path: these go through
+    // fn_complete_trackable / fn_undo_completion, which are security definer
+    // and therefore no longer depend on the caller's own insert rights.
+    const t = await makeTrackable({ kind: "habit", coinValue: 10 });
+    try {
+      const before = await ledgerBalance();
+      const done = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+      expect(done.error).toBeNull();
+      expect(await ledgerBalance()).toBe(before + 10);
+
+      const undone = await testClient.rpc("fn_undo_completion", { p_id: t.id });
+      expect(undone.error).toBeNull();
+      expect(await ledgerBalance()).toBe(before);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
   });
 });

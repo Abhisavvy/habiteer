@@ -14,11 +14,32 @@ drop policy if exists "own profile"       on profiles;
 drop policy if exists "own freeze tokens" on freeze_tokens;
 
 create policy "own trackables"    on trackables    for all using (user_id = auth.uid());
-create policy "own completions"   on completions   for all using (user_id = auth.uid());
-create policy "own ledger"        on coin_ledger   for all using (user_id = auth.uid());
 create policy "own rewards"       on rewards       for all using (user_id = auth.uid());
 create policy "own profile"       on profiles      for all using (id = auth.uid());
-create policy "own freeze tokens" on freeze_tokens for all using (user_id = auth.uid());
+
+-- Phase S — the economy's privilege boundary. `completions`, `coin_ledger`
+-- and `freeze_tokens` are SELECT-ONLY for clients. They carry money, XP and
+-- every capability gate, so only the security-definer RPCs may write them.
+--
+-- These were previously `for all using (user_id = auth.uid())` with NO
+-- `WITH CHECK`. Postgres uses the USING expression as the insert/update check
+-- when WITH CHECK is omitted on a FOR ALL policy, so that allowed a client to
+-- INSERT any row it liked as long as user_id was its own. Verified live before
+-- the fix: an ordinary signed-in user minted 999,999 coins with one
+-- PostgREST call, forged a completion with xp_earned = 999999 (which forges
+-- level, streaks, leaderboard rank, league tier, quest progress, and the L3
+-- group / L5 recurrence / cosmetics gates — all derive from sum(xp_earned)),
+-- and set their own freeze balance. `fn_redeem_reward`'s insufficient-funds
+-- guard was decorative while the ledger itself was writable.
+--
+-- No INSERT/UPDATE/DELETE policy exists for these tables by design: with RLS
+-- enabled and no permissive policy for a command, that command is denied.
+-- This is why fn_complete_trackable/fn_undo_completion/fn_redeem_reward/
+-- fn_contribute_to_reward had to become `security definer` first — they write
+-- these tables and previously did so as the caller.
+create policy "own completions"   on completions   for select using (user_id = auth.uid());
+create policy "own ledger"        on coin_ledger   for select using (user_id = auth.uid());
+create policy "own freeze tokens" on freeze_tokens for select using (user_id = auth.uid());
 
 -- A new auth.users row must get a matching profiles row, or every insert into
 -- trackables/rewards/etc for that user fails their FK constraint. Without this,
@@ -205,20 +226,25 @@ create policy "own trackables" on trackables for all
 
 alter table league_standings enable row level security;
 
+-- Phase S: SELECT-only. Tier is a competitive standing settled by the
+-- security-definer fn_sync_league; when this was `for all` a client could
+-- simply insert itself a Diamond row.
 drop policy if exists "own league standings" on league_standings;
-create policy "own league standings" on league_standings for all
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own league standings" on league_standings for select
+  using (user_id = auth.uid());
 
 -- v3 Gap #3: quest claims are per-user; the reward crediting is done by the
--- security-definer fn_claim_quest, so this policy just scopes reads/writes to
--- the owner (the client only ever SELECTs its own claim history).
+-- security-definer fn_claim_quest.
+--
+-- Phase S: SELECT-only. The old `for all` let a client insert its own
+-- quest_claims row directly — which, combined with the then-writable
+-- coin_ledger, meant claiming a reward without ever meeting the goal. The
+-- client only ever needs to READ its claim history; fn_claim_quest writes it.
 alter table quest_claims enable row level security;
 
 drop policy if exists "own quest claims" on quest_claims;
-create policy "own quest claims" on quest_claims for all
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own quest claims" on quest_claims for select
+  using (user_id = auth.uid());
 
 -- v2 Phase 11: cosmetics (PLAN.md §9 milestone cosmetics, §13 item 11).
 --

@@ -55,6 +55,7 @@ create or replace function public.fn_complete_trackable(p_id uuid)
 returns jsonb
 language plpgsql
 volatile
+security definer
 set search_path = public, pg_catalog
 as $$
 declare
@@ -76,7 +77,16 @@ declare
   v_level_before    int;
   v_level_after     int;
 begin
-  select * into v_trackable from trackables where id = p_id; -- RLS-filtered
+  -- Serialises this user's coin-moving RPCs against each other. Without it,
+  -- two concurrent calls can both pass a balance check on the same funds
+  -- (read-committed lets both read the pre-debit total). Every coin-moving
+  -- function in this file takes this same lock first, so they queue per-user.
+  perform 1 from profiles where id = auth.uid() for update;
+
+  -- Ownership is checked EXPLICITLY, not via RLS: this function is security
+  -- definer (it must be, since the client can no longer write completions or
+  -- coin_ledger itself), so RLS no longer filters these reads for us.
+  select * into v_trackable from trackables where id = p_id and user_id = auth.uid();
   if not found then
     raise exception 'trackable not found';
   end if;
@@ -88,7 +98,7 @@ begin
   -- archives it in the same write, so a same-day retry must replay the
   -- cached result, not fail with "trackable is archived".
   select * into v_existing from completions
-    where trackable_id = p_id and completed_on = current_app_date();
+    where trackable_id = p_id and user_id = auth.uid() and completed_on = current_app_date();
   if found then
     select balance into v_freeze_balance from freeze_tokens where user_id = auth.uid();
     return jsonb_build_object(
@@ -249,6 +259,7 @@ create or replace function public.fn_undo_completion(p_id uuid)
 returns jsonb
 language plpgsql
 volatile
+security definer
 set search_path = public, pg_catalog
 as $$
 declare
@@ -256,13 +267,16 @@ declare
   v_completion completions;
   v_freeze_balance int;
 begin
-  select * into v_trackable from trackables where id = p_id; -- RLS-filtered
+  perform 1 from profiles where id = auth.uid() for update; -- see fn_complete_trackable
+
+  -- Explicit ownership: security definer, so RLS no longer filters these.
+  select * into v_trackable from trackables where id = p_id and user_id = auth.uid();
   if not found then
     raise exception 'trackable not found';
   end if;
 
   select * into v_completion from completions
-    where trackable_id = p_id and completed_on = current_app_date();
+    where trackable_id = p_id and user_id = auth.uid() and completed_on = current_app_date();
   if not found then
     raise exception 'no completion today to undo';
   end if;
@@ -303,13 +317,22 @@ create or replace function public.fn_redeem_reward(p_id uuid)
 returns jsonb
 language plpgsql
 volatile
+security definer
 set search_path = public, pg_catalog
 as $$
 declare
   v_reward  rewards;
   v_balance int;
 begin
-  select * into v_reward from rewards where id = p_id; -- RLS-filtered
+  perform 1 from profiles where id = auth.uid() for update; -- see fn_complete_trackable
+
+  -- Read unfiltered (security definer means RLS no longer scopes this), then
+  -- branch explicitly. Ordered so the pre-existing error messages are
+  -- preserved: a shared reward still reports 'not a personal reward' rather
+  -- than collapsing into 'not found'. The ownership check comes last and
+  -- deliberately reuses 'reward not found' so it never leaks whether some
+  -- other user's reward id exists.
+  select * into v_reward from rewards where id = p_id;
   if not found then
     raise exception 'reward not found';
   end if;
@@ -320,6 +343,9 @@ begin
   -- old "user_id is null is invisible" side effect to keep them apart.
   if v_reward.kind != 'personal' then
     raise exception 'not a personal reward';
+  end if;
+  if v_reward.user_id is distinct from auth.uid() then
+    raise exception 'reward not found'; -- same message: don't leak existence
   end if;
   if v_reward.completed_at is not null then
     raise exception 'reward already redeemed';
@@ -371,6 +397,7 @@ create or replace function public.fn_contribute_to_reward(p_reward_id uuid, p_am
 returns jsonb
 language plpgsql
 volatile
+security definer
 set search_path = public, pg_catalog
 as $$
 declare
@@ -378,7 +405,13 @@ declare
   v_balance            int;
   v_total_contributed  int;
 begin
-  select * into v_reward from rewards where id = p_reward_id; -- RLS-filtered
+  perform 1 from profiles where id = auth.uid() for update; -- see fn_complete_trackable
+
+  -- Security definer, so RLS no longer filters this read. Authorisation for a
+  -- SHARED reward is group membership rather than row ownership, and that is
+  -- already checked explicitly below — which is now the sole gate, not just a
+  -- friendlier duplicate of an RLS rejection.
+  select * into v_reward from rewards where id = p_reward_id;
   if not found then
     raise exception 'reward not found';
   end if;
@@ -391,8 +424,9 @@ begin
   if p_amount <= 0 then
     raise exception 'amount must be positive';
   end if;
-  -- Friendly, explicit check rather than letting this fall through to a
-  -- raw RLS rejection on the reward_contributions insert below.
+  -- THE authorisation gate for this function (was a friendlier duplicate of an
+  -- RLS rejection; since this became security definer, RLS no longer backs it
+  -- up, so this check is load-bearing on its own — do not remove).
   if not exists (
     select 1 from group_members where group_id = v_reward.group_id and user_id = auth.uid()
   ) then

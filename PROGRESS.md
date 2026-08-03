@@ -1,5 +1,118 @@
 # PROGRESS
 
+## Phase S — Economy integrity (three live vulnerabilities, found and closed)
+
+Found while adversarially reviewing the design for the staked-pledge rework
+of long-horizon goals (the user's feedback was that goals "don't connect to
+the player", and the chosen fix was to put real coins at stake). Staking
+coins on a currency anyone can mint is meaningless, so this had to come
+first — and it turned out to matter far more than the feature that surfaced
+it.
+
+**All three were proven live before fixing, not theorised.** As an ordinary
+signed-in user against the real database:
+
+| Attack | Result before fix |
+|---|---|
+| `POST /coin_ledger {delta: 999999}` | **minted** — balance 30 → 1,000,029 |
+| `POST /completions {xp_earned: 999999}` | **accepted** |
+| `PATCH /freeze_tokens {balance: 99}` | **written** |
+| `POST /quest_claims` (self-grant a reward) | **accepted** |
+| `POST /league_standings {tier:'diamond'}` | **accepted** |
+
+### Root cause
+`rls.sql` had `create policy "own X" on X for all using (user_id =
+auth.uid())` with **no `WITH CHECK`** on `completions`, `coin_ledger` and
+`freeze_tokens`. Postgres uses the `USING` expression as the insert/update
+check when `WITH CHECK` is omitted on a `FOR ALL` policy — so any row was
+insertable as long as `user_id` was the caller's own. `quest_claims` and
+`league_standings` had explicit `with check (user_id = auth.uid())`, which
+is the same hole stated out loud.
+
+Because coin balance is always `sum(delta)` and `caller_level()` is always
+`sum(xp_earned) from completions`, this meant the entire economy, XP,
+levels, streaks, leaderboard, league tier **and every capability gate**
+(groups at L3, week/month recurrence at L5, all cosmetics) were
+client-forgeable. `fn_redeem_reward`'s insufficient-funds guard was
+decorative.
+
+### The fix, in the order it had to happen
+1. **`fn_complete_trackable`, `fn_undo_completion`, `fn_redeem_reward`,
+   `fn_contribute_to_reward` are now `security definer`.** They had to go
+   first: they write `completions`/`coin_ledger` **as the caller**, so
+   closing the tables before this would have broken completion outright.
+2. **Every read they do is now explicitly ownership-checked.** `security
+   definer` means RLS no longer filters for them, so the four
+   `-- RLS-filtered` reads became privilege-escalation vectors — without
+   an explicit `and user_id = auth.uid()`, a caller could pass someone
+   else's id and complete/undo/redeem *their* rows. Those comments were
+   removed as now-false.
+   - In `fn_redeem_reward` the ownership check is deliberately ordered
+     *after* the `kind != 'personal'` guard and reuses the message
+     `'reward not found'`, so existing error semantics are preserved and
+     the function never leaks whether another user's reward id exists.
+   - In `fn_contribute_to_reward` the group-membership check was a
+     "friendlier duplicate of an RLS rejection"; it is now the sole
+     authorisation gate and is commented as load-bearing.
+3. **Then the tables were closed** to `for select` only — no
+   INSERT/UPDATE/DELETE policy exists for them at all, so those commands
+   are denied. Applies to `completions`, `coin_ledger`, `freeze_tokens`,
+   `quest_claims`, `league_standings`.
+4. **`for update` row lock added** to every coin-moving RPC
+   (`perform 1 from profiles where id = auth.uid() for update`). There was
+   no lock anywhere in `rpc.sql`, which left a live balance TOCTOU in
+   `fn_redeem_reward`: two concurrent redeems at balance 50 costing 50
+   each could both pass the check and drive the balance to −50.
+
+### Test-infrastructure consequence, handled deliberately
+Closing these tables broke every seed helper (`setFreezeBalance`,
+`seedHistoricalCompletion`, `seedXp`, `seedLeagueStanding`,
+`makeCompetitor`, and the cleanup helpers) — they all wrote through
+`testClient`. They now go through a **direct Postgres admin connection**
+using the `DATABASE_URL` already in `.env` (no new secret; `pg` was already
+a dependency for `scripts/apply-sql.ts`).
+
+The resulting split is worth keeping and is documented in `testClient.ts`:
+**seed as admin, assert as the user.** A test may only ever *reach* state
+via the privileged path; it must never use it to perform the behaviour
+under test, or it would verify the privileged path instead of the one real
+users take.
+
+### A mistake worth recording
+The first (red) run of the new rejection tests inserted successfully —
+because the hole was still open — then failed its assertion and **left
+999,999 coins in the shared test account.** A security test can leave
+behind the very artifact it's proving impossible. Found it by noticing the
+balance was 1,000,045 during re-verification, traced it to that run,
+deleted it (balance back to 30), and hardened the test: it now `select()`s
+the row it tries to insert and sweeps it in a `finally` via a new
+`sweepLedgerRow` admin helper.
+
+### Verification
+- **Re-ran the original attack script**: all five vectors now return
+  Postgres `42501` (insufficient_privilege). Balance unchanged.
+- 6 new tests in a dedicated `economy integrity — client write paths must
+  be closed` block, TDD'd red-first (4 of 5 failed before the fix; the
+  5th, "still completes and undoes normally", passed throughout and was
+  the guard against over-tightening).
+  - One instructive correction: the `freeze_tokens` UPDATE case asserts by
+    **effect** (balance unchanged), not by error — with no permissive
+    UPDATE policy PostgREST reports success but matches zero rows. Only
+    INSERT raises. Asserting the error there would have been asserting the
+    wrong thing; a separate INSERT case covers the raising path.
+- `npx tsc --noEmit` clean. Full suite **176/179** on a single clean run —
+  the same 3 known live-DB-drift failures as the 170/173 baseline, plus the
+  6 new tests, zero regressions.
+  - Two intermediate runs showed 4–5 failures; that was **my own
+    contamination** from running two full suites concurrently against one
+    shared account (`freeze_tokens` is global per-user state reset in
+    `beforeEach`, so concurrent suites fight over it). Confirmed by a
+    single clean run rather than assumed away.
+- **Not device-tested yet** — this is server-side, and the app's own paths
+  are covered by the suite, but a device pass should confirm completing/
+  undoing/redeeming still work through the UI before this is considered
+  fully done.
+
 ## Phase R2 — Pre-commitment ritual
 
 The second (and last) research wedge from point 1, and the small one. The

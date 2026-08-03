@@ -1,11 +1,44 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
+import { Client } from "pg";
 
-/** Signed-in Supabase client for the persistent RPC integration-test account. */
+/** Signed-in Supabase client for the persistent RPC integration-test account.
+ * Goes through PostgREST + RLS, exactly like the real app — so anything these
+ * tests ASSERT is asserted against the same privilege boundary users get. */
 export const testClient = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL!,
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+/**
+ * Admin escape hatch for SEEDING ONLY, over a direct Postgres connection
+ * (DATABASE_URL, already used by scripts/apply-sql.ts) which bypasses RLS.
+ *
+ * Phase S closed `completions`, `coin_ledger`, `freeze_tokens`,
+ * `quest_claims` and `league_standings` to client writes — that's the whole
+ * point of it — which broke every seed helper below that used to insert
+ * through `testClient`. Seeding now goes through here instead.
+ *
+ * The split is deliberate and worth keeping: **seed as admin, assert as the
+ * user.** A test may only ever REACH the state it needs via this path; it must
+ * never use it to perform the behaviour under test, or it would be verifying
+ * the privileged path rather than the one real users take.
+ */
+async function admin<T>(fn: (c: Client) => Promise<T>): Promise<T> {
+  const c = new Client({ connectionString: process.env.DATABASE_URL! });
+  await c.connect();
+  try {
+    return await fn(c);
+  } finally {
+    await c.end();
+  }
+}
+
+/** Caller's auth uid — needed by the admin seeders, which have no session. */
+async function testUserId(): Promise<string> {
+  const { data } = await testClient.auth.getUser();
+  return data.user!.id;
+}
 
 export async function signInTestUser() {
   const { error } = await testClient.auth.signInWithPassword({
@@ -50,16 +83,19 @@ export async function makeTrackable(overrides: TrackableOverrides = {}) {
 }
 
 export async function cleanupLedgerByRefId(refId: string) {
-  await testClient.from("coin_ledger").delete().eq("ref_id", refId);
+  await admin((c) => c.query(`delete from coin_ledger where ref_id = $1`, [refId]));
 }
 
 export async function cleanupTrackable(id: string) {
-  // coin_ledger rows for completions are keyed by ref_id = completion.id, not trackable id.
-  const { data: completions } = await testClient.from("completions").select("id").eq("trackable_id", id);
-  for (const { id: completionId } of completions ?? []) {
-    await testClient.from("coin_ledger").delete().eq("ref_id", completionId);
-  }
-  await testClient.from("completions").delete().eq("trackable_id", id);
+  // coin_ledger rows for completions are keyed by ref_id = completion.id, not
+  // trackable id — so delete them via a subquery rather than a second round trip.
+  await admin(async (c) => {
+    await c.query(
+      `delete from coin_ledger where ref_id in (select id from completions where trackable_id = $1)`,
+      [id]
+    );
+    await c.query(`delete from completions where trackable_id = $1`, [id]);
+  });
   await testClient.from("trackables").delete().eq("id", id);
 }
 
@@ -75,7 +111,7 @@ export async function makeReward(cost: number) {
 }
 
 export async function cleanupReward(id: string) {
-  await testClient.from("coin_ledger").delete().eq("ref_id", id);
+  await admin((c) => c.query(`delete from coin_ledger where ref_id = $1`, [id]));
   await testClient.from("rewards").delete().eq("id", id);
 }
 
@@ -98,11 +134,14 @@ export function todayUTC(offsetDays = 0): string {
 
 /** Test arrangement only — the real app never writes freeze_tokens directly. */
 export async function setFreezeBalance(balance: number) {
-  const { data: userData } = await testClient.auth.getUser();
-  const { error } = await testClient
-    .from("freeze_tokens")
-    .upsert({ user_id: userData.user!.id, balance }, { onConflict: "user_id" });
-  if (error) throw error;
+  const uid = await testUserId();
+  await admin((c) =>
+    c.query(
+      `insert into freeze_tokens (user_id, balance) values ($1, $2)
+       on conflict (user_id) do update set balance = excluded.balance`,
+      [uid, balance]
+    )
+  );
 }
 
 export async function getFreezeBalance(): Promise<number> {
@@ -190,7 +229,7 @@ export async function makeSharedReward(groupId: string, cost: number) {
 }
 
 export async function cleanupSharedReward(id: string) {
-  await testClient.from("coin_ledger").delete().eq("ref_id", id);
+  await admin((c) => c.query(`delete from coin_ledger where ref_id = $1`, [id]));
   await testClient.from("reward_contributions").delete().eq("reward_id", id);
   await testClient.from("rewards").delete().eq("id", id);
 }
@@ -198,13 +237,15 @@ export async function cleanupSharedReward(id: string) {
 /** Clears the test user's quest claims + any 'quest' coin-ledger credits — call
  * after quest-claim tests so the once-per-week claim state doesn't leak. */
 export async function cleanupQuests() {
-  const { data: userData } = await testClient.auth.getUser();
-  const uid = userData.user!.id;
-  await testClient.from("quest_claims").delete().eq("user_id", uid);
-  await testClient.from("coin_ledger").delete().eq("user_id", uid).eq("kind", "quest");
+  const uid = await testUserId();
+  await admin(async (c) => {
+    await c.query(`delete from quest_claims where user_id = $1`, [uid]);
+    await c.query(`delete from coin_ledger where user_id = $1 and kind = 'quest'`, [uid]);
+  });
 }
 
-/** Inserts a completions row directly, bypassing the RPC — for seeding streak history. */
+/** Inserts a completions row directly, bypassing the RPC — for seeding streak
+ * history. Admin-only since Phase S closed `completions` to client writes. */
 export async function seedHistoricalCompletion(
   trackableId: string,
   isoDate: string,
@@ -212,27 +253,29 @@ export async function seedHistoricalCompletion(
   coins: number,
   streakAfter: number
 ) {
-  const { data: userData } = await testClient.auth.getUser();
-  const { error } = await testClient.from("completions").insert({
-    trackable_id: trackableId,
-    user_id: userData.user!.id,
-    completed_on: isoDate,
-    xp_earned: xp,
-    coins_earned: coins,
-    streak_after: streakAfter,
-  });
-  if (error) throw error;
+  const uid = await testUserId();
+  await admin((c) =>
+    c.query(
+      `insert into completions (trackable_id, user_id, completed_on, xp_earned, coins_earned, streak_after)
+       values ($1, $2, $3, $4, $5, $6)`,
+      [trackableId, uid, isoDate, xp, coins, streakAfter]
+    )
+  );
 }
 
 /** Test arrangement only — directly backdates the signed-in test user's
  * league standing, bypassing fn_sync_league(), so a test can arrange "as of
- * last week they were tier X" without needing a real multi-week history. */
+ * last week they were tier X" without needing a real multi-week history.
+ * Admin-only since Phase S made league_standings SELECT-only for clients. */
 export async function seedLeagueStanding(week: string, tier: string, xp = 0) {
-  const { data: userData } = await testClient.auth.getUser();
-  const { error } = await testClient
-    .from("league_standings")
-    .upsert({ user_id: userData.user!.id, week, tier, xp }, { onConflict: "user_id,week" });
-  if (error) throw error;
+  const uid = await testUserId();
+  await admin((c) =>
+    c.query(
+      `insert into league_standings (user_id, week, tier, xp) values ($1, $2, $3, $4)
+       on conflict (user_id, week) do update set tier = excluded.tier, xp = excluded.xp`,
+      [uid, week, tier, xp]
+    )
+  );
 }
 
 export async function getLeagueStanding(): Promise<{ week: string; tier: string; xp: number } | null> {
@@ -249,8 +292,8 @@ export async function getLeagueStanding(): Promise<{ week: string; tier: string;
 }
 
 export async function cleanupLeagueStandings() {
-  const { data: userData } = await testClient.auth.getUser();
-  await testClient.from("league_standings").delete().eq("user_id", userData.user!.id);
+  const uid = await testUserId();
+  await admin((c) => c.query(`delete from league_standings where user_id = $1`, [uid]));
 }
 
 /** Direct profiles update for the signed-in test user — the real client does
@@ -307,21 +350,29 @@ export async function makeCompetitor(week: string, xp: number) {
     .single();
   if (tErr) throw tErr;
 
-  const { error: cErr } = await client.from("completions").insert({
-    trackable_id: t.id,
-    user_id: userId,
-    completed_on: week,
-    xp_earned: xp,
-    coins_earned: 0,
-    streak_after: 1,
-  });
-  if (cErr) throw cErr;
+  // Admin-seeded: completions is SELECT-only for clients since Phase S, and
+  // this rival's XP is pure test arrangement (it stands in for a real history).
+  await admin((c) =>
+    c.query(
+      `insert into completions (trackable_id, user_id, completed_on, xp_earned, coins_earned, streak_after)
+       values ($1, $2, $3, $4, 0, 1)`,
+      [t.id, userId, week, xp]
+    )
+  );
 
   return {
     userId,
     cleanup: async () => {
-      await client.from("completions").delete().eq("trackable_id", t.id);
+      await admin((c) => c.query(`delete from completions where trackable_id = $1`, [t.id]));
       await client.from("trackables").delete().eq("id", t.id);
     },
   };
+}
+
+/** Admin sweep for a single ledger row by id. Exists so the economy-integrity
+ * tests can clean up after themselves if a write they assert is IMPOSSIBLE ever
+ * succeeds — otherwise a red run leaves forged coins in the shared account,
+ * which is exactly what happened the first time those tests ran. */
+export async function sweepLedgerRow(id: string) {
+  await admin((c) => c.query(`delete from coin_ledger where id = $1`, [id]));
 }
