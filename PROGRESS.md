@@ -46,18 +46,33 @@ but ~39% abandon at the commitment step, so friction has to stay near zero.
   logic (one nullable column, one form field, one conditional render), so
   there was nothing to TDD — stated rather than padding the suite with a
   test that asserts a string passes through unchanged.
-- **Device pass: incomplete — the phone dropped off USB mid-check** (same
-  connection flakiness as earlier this session; a reconnect watcher is
-  armed). A `why` was set on the "Yy" habit directly in the DB to test the
-  payoff render, and that check is still outstanding. **Worth clearing that
-  value** (or just editing it in the panel) since it's test text, not the
-  user's own.
-- **Two things still need a human tap** — this device blocks synthetic
-  input (`SecurityException: INJECT_EVENTS`), so neither is reachable from
-  here: R2's own **"Why this matters" field** in the add-habit panel, and
-  Phase R's **`GoalPanel`** (target stepper, 2/4/6/8wk control, and the
-  over-ambitious-target warning). Both render paths are unexercised. Noted
-  as a real gap, not folded into "verified."
+- **Device pass: done.** The phone dropped off USB mid-check first (same
+  flakiness as earlier this session), came back, and the payoff surface was
+  verified **both ways** — not just the happy path:
+  - **Positive**: with a `why` set on the lapsed "Yy" habit (streak 0, not
+    done today), the quote renders in italic violet on that card and on no
+    other card (the other three have no `why`).
+  - **Negative/suppression**: temporarily marked Yy done for today, and the
+    quote correctly **disappeared** — both suppression conditions
+    (`streak === 0`, `!isDoneToday`) firing as intended, with the card
+    showing its normal DONE!/strikethrough/dimmed state.
+  - **A third behavior confirmed for free**: the Phase R "👋 Welcome back"
+    line also vanished in that same state, since `daysSinceLastActivity`
+    became 0 — the negative case for that logic, which the Phase R pass
+    only ever saw in its positive state.
+  - `adb logcat` clean across the pass: no fatals, no JS exceptions.
+- **All test data reverted**, verified by count rather than assumed: the
+  temporary completion deleted (26 completions before and after, and it was
+  inserted with 0 xp/0 coins so `coin_ledger` was never touched — 395 rows
+  throughout), and the test `why` text cleared back to null on every
+  trackable.
+- **Still needs a human tap** — this device blocks synthetic input
+  (`SecurityException: INJECT_EVENTS`), so two *input* paths remain
+  unexercised: R2's **"Why this matters" field** in the add-habit panel,
+  and Phase R's **`GoalPanel`** (target stepper, 2/4/6/8wk control, and the
+  over-ambitious-target warning). The read/render side of R2 is now fully
+  verified above; it's specifically the forms that haven't been opened.
+  Noted as a real gap, not folded into "verified."
 
 ## Phase R — Long-horizon goal reframe
 
