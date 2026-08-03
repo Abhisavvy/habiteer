@@ -147,6 +147,7 @@ as $$
     when 'builder' then 5
     when 'master' then 10
     when 'legend' then 20
+    when 'marathoner' then 9999
     else 9999
   end;
 $$;

@@ -13,7 +13,10 @@ import {
  * because the avatar draws a white initial by default and yellow needs ink
  * for legibility — same pairing the leaderboard tier badge already uses. */
 export type AvatarColor = { id: string; level: number; hex: string; textColor: string };
-export type Title = { id: string; level: number; label: string };
+/** `earned` titles are granted by an action (a completed staked pledge) rather
+ * than by reaching `level`; their level is an unreachable sentinel, so the UI
+ * must not present it as a level requirement. */
+export type Title = { id: string; level: number; label: string; earned?: boolean };
 
 export const AVATAR_COLORS: AvatarColor[] = [
   { id: "violet", level: AVATAR_COLOR_LEVELS.violet, hex: theme.color.violet, textColor: "#fff" },
@@ -28,6 +31,11 @@ export const TITLES: Title[] = [
   { id: "builder", level: TITLE_LEVELS.builder, label: "Habit Builder" },
   { id: "master", level: TITLE_LEVELS.master, label: "Habit Master" },
   { id: "legend", level: TITLE_LEVELS.legend, label: "Habit Legend" },
+  // Earned, not levelled — its sentinel level (9999) is unreachable by design,
+  // so the picker must show it as locked until a title_grants row exists.
+  // `earned: true` tells the UI to say "Complete a pledge" rather than
+  // "LVL 9999", which would read as a bug.
+  { id: "marathoner", level: TITLE_LEVELS.marathoner, label: "Marathoner", earned: true },
 ];
 
 /** Account-wide card skins — all deliberately LIGHT tints so the card's

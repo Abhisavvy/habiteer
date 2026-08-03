@@ -260,33 +260,104 @@ create policy "own quest claims" on quest_claims for select
 -- functions (constants.sql, applied first) already exist.
 drop policy if exists "own profile" on profiles;
 
+-- Phase P: a title may now be reached EITHER by level OR by an explicit grant
+-- (earned by completing a staked pledge).
+--
+-- The parentheses around the title clause are load-bearing. `AND` binds tighter
+-- than `OR`, so writing
+--     ... and caller_level() >= title_unlock_level(title_id) or exists (...)
+-- would parse as
+--     (id = auth.uid() and ...all three gates...) OR exists (...)
+-- — meaning anyone holding ANY grant could satisfy the whole policy and update
+-- ANOTHER USER's profile, bypassing id = auth.uid() and the avatar/card-skin
+-- gates too. Keep the OR bracketed.
+--
+-- `marathoner` carries sentinel unlock level 9999, so the level arm can never
+-- satisfy it and the grant arm is the only way in. Unknown/tampered ids still
+-- fall to the same 9999 backstop.
 create policy "own profile" on profiles for all
   using (id = auth.uid())
   with check (
     id = auth.uid()
     and caller_level() >= avatar_color_unlock_level(avatar_color)
-    and caller_level() >= title_unlock_level(title_id)
+    and (
+      caller_level() >= title_unlock_level(title_id)
+      or exists (
+        select 1 from title_grants g
+        where g.user_id = auth.uid() and g.title_id = profiles.title_id
+      )
+    )
     and caller_level() >= card_skin_unlock_level(card_skin)
   );
 
--- Phase R: long-horizon goals. A goal is a read-only lens over completions
--- that already happened — it doesn't move coins or XP, so (unlike anything
--- that touches the economy) it needs no security-definer RPC, just a plain
--- own-row policy, same shape as league_standings/quest_claims above.
+-- Phase R/P: long-horizon goals, now STAKED pledges.
+--
+-- Phase R shipped these as a read-only lens over completions, and the comment
+-- here said they need no security-definer RPC because they don't move coins.
+-- Phase P made that false: a goal now holds a real coin stake, pays checkpoints
+-- back, and grants a title. So this is SELECT-only like the rest of the economy
+-- — all writes go through the pledge RPCs.
+--
+-- Leaving it `for all` would have been fatal: a client could PATCH
+-- {checkpoints_banked: 0} and re-bank the same checkpoints forever, or POST a
+-- goal with {staked_coins: 5000} that no `pledge` debit ever paid for, then
+-- bank it out. `fn_create_pledge` being security definer is irrelevant while
+-- the table itself stays writable — the same mistake this file warns about
+-- above for cosmetics.
 alter table goals enable row level security;
 
 drop policy if exists "own goals" on goals;
-create policy "own goals" on goals for all
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own goals" on goals for select
+  using (user_id = auth.uid());
+
+-- Legacy Phase-R rows predate staking: they backfill to staked_coins = 0 and
+-- state = 'active', which would leave them bankable — paying 0 coins but still
+-- granting the `marathoner` title for free, and blocking a real pledge on the
+-- same habit via the exclusion constraint. Retire them before the constraints
+-- below can reject them. Idempotent: only touches rows that never staked.
+update goals set state = 'forfeited', settled_at = now()
+  where state = 'active' and staked_coins = 0 and ends_on < current_date;
+
+alter table goals drop constraint if exists goals_state_valid;
+alter table goals add constraint goals_state_valid
+  check (state in ('active', 'kept', 'forfeited'));
+
+alter table goals drop constraint if exists goals_staked_coins_non_negative;
+alter table goals add constraint goals_staked_coins_non_negative check (staked_coins >= 0);
+
+alter table goals drop constraint if exists goals_checkpoints_banked_in_range;
+alter table goals add constraint goals_checkpoints_banked_in_range
+  check (checkpoints_banked between 0 and goal_checkpoint_count());
+
+-- target_count >= goal_target_min() is a COIN-PRINTER guard, not ergonomics.
+-- Checkpoint i's threshold is ceil(target * i / 4), so at target 1 all four
+-- thresholds are 1: a single completion returns the entire stake plus the
+-- bonus, and (since terminal goals no longer block a new pledge) that repeats
+-- daily. The floor also keeps the four thresholds genuinely distinct.
+-- Phase R rows created before this floor existed are grandfathered by the
+-- `not valid` clause — the constraint applies to new writes only, and every
+-- write now goes through an RPC that enforces the same rule.
+alter table goals drop constraint if exists goals_target_count_positive;
+alter table goals drop constraint if exists goals_target_count_min;
+alter table goals add constraint goals_target_count_min
+  check (target_count >= goal_target_min()) not valid;
+
+-- An unreachable target is punitive once money is staked, so a pledge needs a
+-- window long enough to actually hit its target.
+alter table goals drop constraint if exists goals_min_window;
+alter table goals add constraint goals_min_window
+  check (ends_on - starts_on + 1 >= goal_min_window_days()) not valid;
 
 -- Basic sanity constraints — cheap, and catch a malformed row from any
 -- direct REST call, not just this app's own form validation.
 alter table goals drop constraint if exists goals_ends_on_after_starts_on;
 alter table goals add constraint goals_ends_on_after_starts_on check (ends_on >= starts_on);
 
+-- goals_target_count_positive (target_count > 0) was Phase R's floor. Phase P's
+-- goals_target_count_min (>= goal_target_min()) strictly supersedes it, so it's
+-- dropped rather than re-added — keeping both would leave the real rule stated
+-- in two places with the weaker one looking authoritative.
 alter table goals drop constraint if exists goals_target_count_positive;
-alter table goals add constraint goals_target_count_positive check (target_count > 0);
 
 -- At most one goal per trackable with an overlapping [starts_on, ends_on]
 -- window — enforced as a real constraint, not just an app-side check-then-
@@ -295,6 +366,25 @@ alter table goals add constraint goals_target_count_positive check (target_count
 -- exclusion constraint use "=" alongside the range-overlap operator.
 create extension if not exists btree_gist;
 
+-- PARTIAL since Phase P: only ACTIVE pledges may not overlap. Terminal rows
+-- (kept/forfeited) are settlement records that must be retained, and an
+-- unconditional constraint would let a finished pledge block a new one on the
+-- same habit forever — which Phase R worked around by DELETING the old goal, a
+-- refund-by-abandonment exploit once a stake is involved.
+--
+-- The drop reuses the EXACT original name: if it didn't, the old unconditional
+-- constraint would survive re-apply and keep blocking.
 alter table goals drop constraint if exists goals_no_overlapping_windows;
 alter table goals add constraint goals_no_overlapping_windows
-  exclude using gist (trackable_id with =, daterange(starts_on, ends_on, '[]') with &&);
+  exclude using gist (trackable_id with =, daterange(starts_on, ends_on, '[]') with &&)
+  where (state = 'active');
+
+-- Phase P: titles EARNED by completing a staked pledge, rather than unlocked
+-- by level. SELECT-own only — there is deliberately NO insert/update/delete
+-- policy, so the only writer is the security-definer pledge settlement. A
+-- self-grantable title would make the whole stake pointless.
+alter table title_grants enable row level security;
+
+drop policy if exists "own title grants" on title_grants;
+create policy "own title grants" on title_grants for select
+  using (user_id = auth.uid());

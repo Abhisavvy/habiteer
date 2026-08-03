@@ -46,6 +46,11 @@ export const TITLE_LEVELS: Record<string, number> = {
   builder: 5,
   master: 10,
   legend: 20,
+  // EARNED, not levelled: granted by completing a staked pledge (Phase P).
+  // The sentinel level is deliberately unreachable so the level arm of the
+  // profiles RLS gate can never satisfy it — the title_grants arm is the only
+  // way to equip it. Same 9999 the generator already uses for unknown ids.
+  marathoner: 9999,
 };
 export const CARD_SKIN_LEVELS: Record<string, number> = {
   plain: 1, // default

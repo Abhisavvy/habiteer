@@ -121,12 +121,47 @@ export const goals = pgTable("goals", {
   targetCount: integer("target_count").notNull(),
   startsOn: date("starts_on").notNull(),
   endsOn: date("ends_on").notNull(), // inclusive
+  // Phase P — the pledge. Coins staked up front (debited at creation), so a
+  // forfeit is simply "never credited back" rather than a second debit.
+  stakedCoins: integer("staked_coins").notNull().default(0),
+  // 'active' | 'kept' | 'forfeited'. STORED, not derived: it's the settlement
+  // record. Deriving "missed" from (today > ends_on) would leave the payout
+  // logic with no idempotency anchor, so a checkpoint or forfeit could fire
+  // twice. Terminal rows are retained as history and never deleted.
+  state: text("state").notNull().default("active"),
+  // How many checkpoints have already paid out. The idempotency counter: a
+  // payout is always total(n) - total(checkpoints_banked).
+  checkpointsBanked: integer("checkpoints_banked").notNull().default(0),
+  settledAt: timestamp("settled_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
-// CHECK (ends_on >= starts_on), CHECK (target_count > 0), and a btree_gist
-// EXCLUDE constraint preventing two goals on the same trackable from having
-// overlapping [starts_on, ends_on] windows are applied via rls.sql (not
-// expressible in drizzle's schema DSL) — see rls.sql's "goals" section.
+// Constraints not expressible in drizzle's DSL live in rls.sql's "goals"
+// section: the CHECKs (ends_on >= starts_on, target_count >= goal_target_min(),
+// staked_coins >= 0, minimum window length), the PARTIAL btree_gist EXCLUDE
+// that only forbids overlapping windows among ACTIVE goals, and the
+// SELECT-only policy (all writes go through the pledge RPCs).
+
+/**
+ * Phase P — titles EARNED by action rather than unlocked by level.
+ *
+ * Titles were previously gated purely by `caller_level() >=
+ * title_unlock_level(id)` in the profiles RLS WITH CHECK, which has no way to
+ * express "you completed a staked pledge." This table is that missing grant
+ * record, and the profiles policy consults it alongside the level rule.
+ *
+ * Deliberately has NO client write policy — only the security-definer pledge
+ * settlement writes it, so a user can't self-grant. `marathoner` carries
+ * sentinel unlock level 9999 in TITLE_LEVELS so no amount of XP alone reaches it.
+ */
+export const titleGrants = pgTable(
+  "title_grants",
+  {
+    userId: uuid("user_id").notNull().references(() => profiles.id),
+    titleId: text("title_id").notNull(),
+    grantedAt: timestamp("granted_at").defaultNow(),
+  },
+  (t) => ({ onceEach: unique().on(t.userId, t.titleId) })
+);
 
 export const rewardContributions = pgTable("reward_contributions", {
   id: uuid("id").primaryKey().defaultRandom(),
