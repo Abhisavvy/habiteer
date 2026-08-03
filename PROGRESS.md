@@ -66,13 +66,14 @@ but ~39% abandon at the commitment step, so friction has to stay near zero.
   inserted with 0 xp/0 coins so `coin_ledger` was never touched — 395 rows
   throughout), and the test `why` text cleared back to null on every
   trackable.
-- **Still needs a human tap** — this device blocks synthetic input
-  (`SecurityException: INJECT_EVENTS`), so two *input* paths remain
-  unexercised: R2's **"Why this matters" field** in the add-habit panel,
-  and Phase R's **`GoalPanel`** (target stepper, 2/4/6/8wk control, and the
-  over-ambitious-target warning). The read/render side of R2 is now fully
-  verified above; it's specifically the forms that haven't been opened.
-  Noted as a real gap, not folded into "verified."
+- **Both form paths confirmed working by the user** (2026-08-03), closing
+  the last open gap on R and R2 together: R2's **"Why this matters" field**
+  in the add-habit panel, and Phase R's **`GoalPanel`** (target stepper,
+  2/4/6/8wk duration control, over-ambitious-target warning). This device
+  blocks synthetic input (`SecurityException: INJECT_EVENTS`), so opening a
+  form was never reachable from here — recorded as the user's own
+  hands-on confirmation, distinct from the machine-verified checks above.
+  **Phases R and R2 are now fully verified end to end.**
 
 ## Phase R — Long-horizon goal reframe
 
@@ -229,12 +230,14 @@ vanishing from Stats/Today) rather than being auto-closed.
   the select returned **only that user's own goal**, not the other
   account's goal sitting in the same table. RLS isolation confirmed, not
   assumed.
-- **Still not exercised** (input injection remains blocked on this
-  device — `SecurityException: INJECT_EVENTS`): `GoalPanel` itself. Its
-  render path is untested, and so are the two things only a tap reaches —
-  the target/duration controls, and the over-ambitious-target warning.
-  The write it performs is covered by the RLS check above, but the panel's
-  own UI is not. Stated plainly rather than folded into "verified."
+- **`GoalPanel` was the one gap at the time of this pass** — input injection
+  is blocked on this device (`SecurityException: INJECT_EVENTS`), so its
+  render path, the target/duration controls, and the over-ambitious-target
+  warning couldn't be reached from here. The write it performs was already
+  covered by the RLS check above, but the panel's own UI wasn't.
+  **Since closed:** the user confirmed the panel works hands-on
+  (2026-08-03) — see the Phase R2 section's device-pass notes, where both
+  form paths were confirmed together.
 - All test goals deleted afterward; `select count(*) from goals` back to 0.
 - **Committed** (`829ebf0`) and pushed. This closes out the roadmap's
   Phase R item (Phase R2, the small pre-commitment-ritual wedge, and
