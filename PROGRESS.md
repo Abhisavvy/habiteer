@@ -118,16 +118,53 @@ vanishing from Stats/Today) rather than being auto-closed.
   EXCLUDE constraint present by name, and the EXCLUDE constraint's actual
   rejection behavior confirmed live (in a rolled-back transaction, no
   data persisted).
-- **No device pass this round** — the physical device wasn't connected at
-  all this time (the adb daemon itself wasn't running), a step further
-  than every prior round's "partial, input-injection-blocked" pass. Stated
-  plainly: nothing about this phase's actual on-device rendering or feel
-  has been checked yet.
-- **Not committed** — pending either a device pass or the user's explicit
-  go to commit without one, same standing convention as every phase since
-  M2. This closes out point 1 of the roadmap's Phase R item (Phase R2,
-  the small pre-commitment-ritual wedge, and point 3 — parked for hard
-  launch — remain).
+- **Device pass: done, and the most complete one of this session** — the
+  phone reconnected right after the commit, so this got a real pass (the
+  adb daemon had to restart, which needed the USB-debugging prompt
+  re-approved on the device first). Fresh Metro with `--clear`, bundle
+  confirmed new (3636 modules, up from 3631 — the new goals files).
+  Verified live, all four goal states plus both lapsed-detection pieces:
+  - **"👋 Welcome back"** renders correctly — this account's last
+    completion was Jul 25 and the device clock reads Aug 3, so 9 days >
+    the 3-day threshold. The exact case the old UI had no answer for.
+  - **The header Ember is sleepy** (closed eyes) instead of the old
+    always-neutral — every streak had reset to 0 after the 9-day gap, so
+    `expressionForStreak(0)` → `"sleepy"`. First time this function has
+    ever affected an in-app screen.
+  - **No goal → "🎯 Set a goal"** on every per-habit Stats row.
+  - **Active + behind pace → "🎯 4/20 · behind pace"** + Remove, with the
+    gold `🎯 4/20` chip on that habit's Today card and on no other card.
+    Numbers cross-checked against the DB directly: exactly 4 completions
+    in the window, and day 15 of 28 expects ~10.7, so "behind" is right.
+  - **Met mid-window → "🎯 Goal met! 4/3 🎉"** + "Set a new goal" — fires
+    on progress reaching target, without waiting for the window to end.
+  - **Missed → "🎯 Goal ended · 0/30"** + "Set a new goal"; 0 progress
+    correct for that June–mid-July window (this habit's activity was all
+    late July).
+  - Today's chip correctly **disappears** for met/missed — it's an
+    active-goal-only affordance, as designed.
+  - `adb logcat` clean across the entire pass: zero fatals, zero
+    AndroidRuntime entries, zero JS exceptions.
+- **The RLS client path verified separately**, because it had to be: the
+  goal states above were driven by direct `DATABASE_URL` writes, which
+  bypass RLS entirely and therefore prove nothing about it. A short
+  throwaway script signed in as the real test user via `supabase-js` (the
+  same path the app uses) and confirmed insert / select / delete all work
+  through the `own goals` policy, that the CHECK constraint rejects
+  `target_count = 0` from the client too, and — the meaningful one — that
+  the select returned **only that user's own goal**, not the other
+  account's goal sitting in the same table. RLS isolation confirmed, not
+  assumed.
+- **Still not exercised** (input injection remains blocked on this
+  device — `SecurityException: INJECT_EVENTS`): `GoalPanel` itself. Its
+  render path is untested, and so are the two things only a tap reaches —
+  the target/duration controls, and the over-ambitious-target warning.
+  The write it performs is covered by the RLS check above, but the panel's
+  own UI is not. Stated plainly rather than folded into "verified."
+- All test goals deleted afterward; `select count(*) from goals` back to 0.
+- **Committed** (`829ebf0`) and pushed. This closes out the roadmap's
+  Phase R item (Phase R2, the small pre-commitment-ritual wedge, and
+  point 3 — parked for hard launch — remain).
 
 ## Phase 1 — Scaffold + Auth  (done)
 Done
