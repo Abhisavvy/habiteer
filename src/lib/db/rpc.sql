@@ -19,7 +19,16 @@ $$;
 -- 'undo' for fn_undo_completion's compensating ledger entries.
 alter table coin_ledger drop constraint if exists coin_ledger_kind_check;
 alter table coin_ledger add constraint coin_ledger_kind_check
-  check (kind in ('earn', 'redeem', 'contribute', 'undo', 'quest'));
+  check (kind in (
+    'earn', 'redeem', 'contribute', 'undo', 'quest',
+    -- Phase P, staked pledges. 'pledge' is the negative stake taken up front;
+    -- 'pledge_return' credits a banked checkpoint; 'pledge_bonus' the
+    -- completion bonus. 'pledge_forfeit' is deliberately a ZERO-delta row: the
+    -- stake was already debited at creation, so forfeiting costs nothing
+    -- further — but without a row the original −50 would be unexplainable from
+    -- the ledger alone, and fn_settle_goal would have no audit trail.
+    'pledge', 'pledge_return', 'pledge_bonus', 'pledge_forfeit'
+  ));
 
 create index if not exists completions_user_date_idx on completions (user_id, completed_on);
 
@@ -637,6 +646,345 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- Phase P — staked pledges on long-horizon goals.
+--
+-- Design notes that matter for anyone editing these:
+--
+--  * All four are SECURITY DEFINER (they write goals/coin_ledger/title_grants,
+--    all of which are SELECT-only for clients), which means RLS does NOT filter
+--    their reads. Every one therefore checks `user_id = auth.uid()` EXPLICITLY.
+--    Without that, a caller could pass someone else's goal id and bank/settle/
+--    abandon THEIR pledge.
+--
+--  * Each takes `for update` on the goal row FIRST. Read-compute-pay-update at
+--    READ COMMITTED is otherwise a double-pay: two rapid taps both read
+--    checkpoints_banked = 0, both insert a pledge_return, and the second UPDATE
+--    just rewrites the same stale value. The lock serialises them.
+--
+--  * Progress is always RECOMPUTED from completions inside the window. A client
+--    never supplies it.
+--
+--  * Payout uses the CUMULATIVE helpers (goal_checkpoint_payout_total), so
+--    banking three checkpoints in one call is identical to banking them singly.
+-- ============================================================================
+
+create or replace function public.fn_create_pledge(
+  p_trackable_id uuid,
+  p_target_count int,
+  p_starts_on date,
+  p_ends_on date,
+  p_staked_coins int
+)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_trackable trackables;
+  v_balance   int;
+  v_goal      goals;
+begin
+  perform 1 from profiles where id = auth.uid() for update;
+
+  select * into v_trackable from trackables where id = p_trackable_id and user_id = auth.uid();
+  if not found then
+    raise exception 'trackable not found';
+  end if;
+  if v_trackable.archived_at is not null then
+    raise exception 'cannot pledge on an archived habit';
+  end if;
+  -- Habits only: a task self-archives on its first completion, so a multi-count
+  -- target could never be reached and the stake would be stranded.
+  if v_trackable.kind <> 'habit' then
+    raise exception 'pledges are for habits only';
+  end if;
+
+  if p_staked_coins < goal_stake_min() then
+    raise exception 'stake below minimum';
+  end if;
+  if p_target_count < goal_target_min() then
+    raise exception 'target below minimum';
+  end if;
+  if p_ends_on - p_starts_on + 1 < goal_min_window_days() then
+    raise exception 'window too short';
+  end if;
+
+  select coalesce(sum(delta), 0) into v_balance from coin_ledger where user_id = auth.uid();
+  if v_balance < p_staked_coins then
+    raise exception 'insufficient coins';
+  end if;
+
+  -- Debit first, then insert. If the partial EXCLUDE constraint rejects an
+  -- overlapping active pledge, the whole function rolls back — including this
+  -- debit — because a plpgsql function body is one implicit transaction.
+  insert into coin_ledger (user_id, delta, kind)
+    values (auth.uid(), -p_staked_coins, 'pledge');
+
+  insert into goals (user_id, trackable_id, target_count, starts_on, ends_on, staked_coins, state)
+    values (auth.uid(), p_trackable_id, p_target_count, p_starts_on, p_ends_on, p_staked_coins, 'active')
+    returning * into v_goal;
+
+  -- ref_id can only be set now that the row exists; keeps the debit traceable.
+  update coin_ledger set ref_id = v_goal.id
+    where user_id = auth.uid() and kind = 'pledge' and ref_id is null;
+
+  return jsonb_build_object(
+    'id', v_goal.id,
+    'staked', p_staked_coins,
+    'balance', (select coalesce(sum(delta), 0) from coin_ledger where user_id = auth.uid())
+  );
+end;
+$$;
+
+-- Banks every checkpoint the user has EARNED but not yet been paid for.
+-- Deliberately user-invoked (a "Bank" button) rather than automatic: the whole
+-- complaint that prompted this feature was that goals were passive, so the
+-- player taking the action IS the fix.
+create or replace function public.fn_bank_goal_checkpoint(p_id uuid)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_goal      goals;
+  v_progress  int;
+  v_earned    int := 0;
+  v_payout    int;
+  v_bonus     int := 0;
+  v_completed boolean := false;
+  i           int;
+begin
+  perform 1 from profiles where id = auth.uid() for update;
+
+  -- for update: without it two rapid taps both see the same
+  -- checkpoints_banked and both pay out.
+  select * into v_goal from goals where id = p_id and user_id = auth.uid() for update;
+  if not found then
+    raise exception 'pledge not found';
+  end if;
+  if v_goal.state <> 'active' then
+    raise exception 'pledge already settled';
+  end if;
+
+  -- Server-side recount; never trust a client-supplied progress.
+  select count(*)::int into v_progress from completions
+    where user_id = auth.uid()
+      and trackable_id = v_goal.trackable_id
+      and completed_on >= v_goal.starts_on
+      and completed_on <= v_goal.ends_on;
+
+  for i in 1..goal_checkpoint_count() loop
+    if v_progress >= goal_checkpoint_threshold(v_goal.target_count, i) then
+      v_earned := i;
+    end if;
+  end loop;
+
+  if v_earned <= v_goal.checkpoints_banked then
+    raise exception 'no checkpoint reached yet';
+  end if;
+
+  v_payout := goal_checkpoint_payout_total(v_goal.staked_coins, v_earned)
+            - goal_checkpoint_payout_total(v_goal.staked_coins, v_goal.checkpoints_banked);
+
+  if v_payout > 0 then
+    insert into coin_ledger (user_id, delta, kind, ref_id)
+      values (auth.uid(), v_payout, 'pledge_return', v_goal.id);
+  end if;
+
+  v_completed := v_earned >= goal_checkpoint_count();
+
+  if v_completed then
+    v_bonus := goal_completion_bonus(v_goal.staked_coins);
+    if v_bonus > 0 then
+      insert into coin_ledger (user_id, delta, kind, ref_id)
+        values (auth.uid(), v_bonus, 'pledge_bonus', v_goal.id);
+    end if;
+    -- The title is gated on a real stake, so a legacy/zero-stake goal can't
+    -- mint it for free.
+    if v_goal.staked_coins >= goal_stake_min() then
+      insert into title_grants (user_id, title_id)
+        values (auth.uid(), 'marathoner')
+        on conflict (user_id, title_id) do nothing;
+    end if;
+  end if;
+
+  update goals set
+    checkpoints_banked = v_earned,
+    state = case when v_completed then 'kept' else 'active' end,
+    settled_at = case when v_completed then now() else null end
+    where id = v_goal.id;
+
+  return jsonb_build_object(
+    'banked', v_earned,
+    'payout', v_payout,
+    'bonus', v_bonus,
+    'kept', v_completed,
+    'progress', v_progress,
+    'balance', (select coalesce(sum(delta), 0) from coin_ledger where user_id = auth.uid())
+  );
+end;
+$$;
+
+-- Called lazily when a pledge whose window has passed is viewed.
+--
+-- CRITICAL: this banks every EARNED checkpoint before forfeiting. Otherwise a
+-- user who hit 20/20 but never tapped Bank would lose the entire stake at
+-- midnight — us taking money they demonstrably earned. Only the genuinely
+-- unearned remainder is forfeited, which is also why "forfeit" needs no debit:
+-- the stake left the balance at creation and simply never comes back.
+create or replace function public.fn_settle_goal(p_id uuid)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_goal     goals;
+  v_progress int;
+  v_earned   int := 0;
+  v_payout   int := 0;
+  v_bonus    int := 0;
+  v_kept     boolean := false;
+  i          int;
+begin
+  perform 1 from profiles where id = auth.uid() for update;
+
+  select * into v_goal from goals where id = p_id and user_id = auth.uid() for update;
+  if not found then
+    raise exception 'pledge not found';
+  end if;
+  if v_goal.state <> 'active' then
+    -- Idempotent: settling twice is a no-op, not an error, because this is
+    -- called opportunistically on view and may race with itself.
+    return jsonb_build_object('state', v_goal.state, 'payout', 0, 'bonus', 0, 'alreadySettled', true);
+  end if;
+  if current_app_date() <= v_goal.ends_on then
+    raise exception 'pledge window has not ended';
+  end if;
+
+  select count(*)::int into v_progress from completions
+    where user_id = auth.uid()
+      and trackable_id = v_goal.trackable_id
+      and completed_on >= v_goal.starts_on
+      and completed_on <= v_goal.ends_on;
+
+  for i in 1..goal_checkpoint_count() loop
+    if v_progress >= goal_checkpoint_threshold(v_goal.target_count, i) then
+      v_earned := i;
+    end if;
+  end loop;
+
+  v_payout := goal_checkpoint_payout_total(v_goal.staked_coins, v_earned)
+            - goal_checkpoint_payout_total(v_goal.staked_coins, v_goal.checkpoints_banked);
+  if v_payout > 0 then
+    insert into coin_ledger (user_id, delta, kind, ref_id)
+      values (auth.uid(), v_payout, 'pledge_return', v_goal.id);
+  end if;
+
+  v_kept := v_earned >= goal_checkpoint_count();
+  if v_kept then
+    v_bonus := goal_completion_bonus(v_goal.staked_coins);
+    if v_bonus > 0 then
+      insert into coin_ledger (user_id, delta, kind, ref_id)
+        values (auth.uid(), v_bonus, 'pledge_bonus', v_goal.id);
+    end if;
+    if v_goal.staked_coins >= goal_stake_min() then
+      insert into title_grants (user_id, title_id)
+        values (auth.uid(), 'marathoner')
+        on conflict (user_id, title_id) do nothing;
+    end if;
+  else
+    -- Zero-delta audit row: the coins are already gone, but this makes the
+    -- original 'pledge' debit explicable from the ledger alone.
+    insert into coin_ledger (user_id, delta, kind, ref_id)
+      values (auth.uid(), 0, 'pledge_forfeit', v_goal.id);
+  end if;
+
+  update goals set
+    checkpoints_banked = greatest(v_earned, v_goal.checkpoints_banked),
+    state = case when v_kept then 'kept' else 'forfeited' end,
+    settled_at = now()
+    where id = v_goal.id;
+
+  return jsonb_build_object(
+    'state', case when v_kept then 'kept' else 'forfeited' end,
+    'payout', v_payout,
+    'bonus', v_bonus,
+    'forfeited', greatest(v_goal.staked_coins - goal_checkpoint_payout_total(v_goal.staked_coins, greatest(v_earned, v_goal.checkpoints_banked)), 0),
+    'balance', (select coalesce(sum(delta), 0) from coin_ledger where user_id = auth.uid())
+  );
+end;
+$$;
+
+-- Explicit give-up, mid-window. Replaces the old deleteGoal, which would be
+-- refund-by-abandonment now that a stake exists. Banks what was genuinely
+-- earned (same fairness rule as settle) and forfeits only the rest.
+create or replace function public.fn_abandon_pledge(p_id uuid)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_goal     goals;
+  v_progress int;
+  v_earned   int := 0;
+  v_payout   int := 0;
+  i          int;
+begin
+  perform 1 from profiles where id = auth.uid() for update;
+
+  select * into v_goal from goals where id = p_id and user_id = auth.uid() for update;
+  if not found then
+    raise exception 'pledge not found';
+  end if;
+  if v_goal.state <> 'active' then
+    raise exception 'pledge already settled';
+  end if;
+
+  select count(*)::int into v_progress from completions
+    where user_id = auth.uid()
+      and trackable_id = v_goal.trackable_id
+      and completed_on >= v_goal.starts_on
+      and completed_on <= v_goal.ends_on;
+
+  for i in 1..goal_checkpoint_count() loop
+    if v_progress >= goal_checkpoint_threshold(v_goal.target_count, i) then
+      v_earned := i;
+    end if;
+  end loop;
+
+  v_payout := goal_checkpoint_payout_total(v_goal.staked_coins, v_earned)
+            - goal_checkpoint_payout_total(v_goal.staked_coins, v_goal.checkpoints_banked);
+  if v_payout > 0 then
+    insert into coin_ledger (user_id, delta, kind, ref_id)
+      values (auth.uid(), v_payout, 'pledge_return', v_goal.id);
+  end if;
+
+  insert into coin_ledger (user_id, delta, kind, ref_id)
+    values (auth.uid(), 0, 'pledge_forfeit', v_goal.id);
+
+  update goals set
+    checkpoints_banked = greatest(v_earned, v_goal.checkpoints_banked),
+    state = 'forfeited',
+    settled_at = now()
+    where id = v_goal.id;
+
+  return jsonb_build_object(
+    'payout', v_payout,
+    'forfeited', greatest(v_goal.staked_coins - goal_checkpoint_payout_total(v_goal.staked_coins, greatest(v_earned, v_goal.checkpoints_banked)), 0),
+    'balance', (select coalesce(sum(delta), 0) from coin_ledger where user_id = auth.uid())
+  );
+end;
+$$;
+
 grant execute on function public.fn_complete_trackable(uuid) to authenticated;
 grant execute on function public.fn_undo_completion(uuid) to authenticated;
 grant execute on function public.fn_redeem_reward(uuid) to authenticated;
@@ -645,3 +993,7 @@ grant execute on function public.fn_contribute_to_reward(uuid, int) to authentic
 grant execute on function public.fn_sync_league() to authenticated;
 grant execute on function public.fn_group_activity(uuid, date) to authenticated;
 grant execute on function public.fn_claim_quest(text) to authenticated;
+grant execute on function public.fn_create_pledge(uuid, int, date, date, int) to authenticated;
+grant execute on function public.fn_bank_goal_checkpoint(uuid) to authenticated;
+grant execute on function public.fn_settle_goal(uuid) to authenticated;
+grant execute on function public.fn_abandon_pledge(uuid) to authenticated;

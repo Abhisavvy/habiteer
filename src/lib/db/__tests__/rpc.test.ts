@@ -31,6 +31,11 @@ import {
   resetCosmetics,
   cleanupQuests,
   sweepLedgerRow,
+  fundCoins,
+  cleanupPledges,
+  seedPledge,
+  getPledge,
+  hasTitleGrant,
 } from "./testClient";
 
 beforeAll(async () => {
@@ -1013,6 +1018,310 @@ describe("economy integrity — client write paths must be closed", () => {
       expect(await ledgerBalance()).toBe(before);
     } finally {
       await cleanupTrackable(t.id);
+    }
+  });
+});
+
+// Phase P — staked pledges. The economy-critical block: every test here is
+// either "the user gets exactly what they earned" or "the user cannot extract
+// what they didn't". Real coins move, so these assert on balance deltas, not
+// just on absence of error.
+describe("pledges — fn_create_pledge", () => {
+  afterEach(async () => {
+    await cleanupPledges();
+  });
+
+  it("debits the stake and creates an active pledge", async () => {
+    const t = await makeTrackable({ kind: "habit" });
+    const unfund = await fundCoins(60);
+    try {
+      const before = await ledgerBalance();
+      const { data, error } = await testClient.rpc("fn_create_pledge", {
+        p_trackable_id: t.id, p_target_count: 20,
+        p_starts_on: todayUTC(), p_ends_on: todayUTC(27), p_staked_coins: 50,
+      });
+      expect(error).toBeNull();
+      expect(data.staked).toBe(50);
+      expect(await ledgerBalance()).toBe(before - 50);
+      expect((await getPledge(data.id)).state).toBe("active");
+    } finally {
+      await unfund();
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("rejects a stake above the balance, with no partial debit", async () => {
+    const t = await makeTrackable({ kind: "habit" });
+    try {
+      const before = await ledgerBalance();
+      const { error } = await testClient.rpc("fn_create_pledge", {
+        p_trackable_id: t.id, p_target_count: 20,
+        p_starts_on: todayUTC(), p_ends_on: todayUTC(27), p_staked_coins: 999999,
+      });
+      expect(error).not.toBeNull();
+      expect(await ledgerBalance()).toBe(before); // rolled back whole
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("rejects a target below the minimum — the coin-printer guard", async () => {
+    const t = await makeTrackable({ kind: "habit" });
+    const unfund = await fundCoins(60);
+    try {
+      const { error } = await testClient.rpc("fn_create_pledge", {
+        p_trackable_id: t.id, p_target_count: 1,
+        p_starts_on: todayUTC(), p_ends_on: todayUTC(27), p_staked_coins: 50,
+      });
+      expect(error).not.toBeNull();
+    } finally {
+      await unfund();
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("rejects pledging on a task (its target could never be reached)", async () => {
+    const t = await makeTrackable({ kind: "task" });
+    const unfund = await fundCoins(60);
+    try {
+      const { error } = await testClient.rpc("fn_create_pledge", {
+        p_trackable_id: t.id, p_target_count: 20,
+        p_starts_on: todayUTC(), p_ends_on: todayUTC(27), p_staked_coins: 50,
+      });
+      expect(error).not.toBeNull();
+    } finally {
+      await unfund();
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("rejects a second overlapping ACTIVE pledge on the same habit", async () => {
+    const t = await makeTrackable({ kind: "habit" });
+    const unfund = await fundCoins(120);
+    try {
+      const first = await testClient.rpc("fn_create_pledge", {
+        p_trackable_id: t.id, p_target_count: 20,
+        p_starts_on: todayUTC(), p_ends_on: todayUTC(27), p_staked_coins: 50,
+      });
+      expect(first.error).toBeNull();
+      const balAfterFirst = await ledgerBalance();
+
+      const second = await testClient.rpc("fn_create_pledge", {
+        p_trackable_id: t.id, p_target_count: 20,
+        p_starts_on: todayUTC(10), p_ends_on: todayUTC(40), p_staked_coins: 50,
+      });
+      expect(second.error).not.toBeNull();
+      // The rejected attempt must not have kept its debit.
+      expect(await ledgerBalance()).toBe(balAfterFirst);
+    } finally {
+      await unfund();
+      await cleanupTrackable(t.id);
+    }
+  });
+});
+
+describe("pledges — banking, settlement and idempotency", () => {
+  afterEach(async () => {
+    await cleanupPledges();
+  });
+
+  it("banks one checkpoint's share and is idempotent on a second tap", async () => {
+    const t = await makeTrackable({ kind: "habit", createdAt: todayUTC(-30) });
+    try {
+      // target 8 -> thresholds 2,4,6,8. Seed 2 completions = checkpoint 1 only.
+      const id = await seedPledge({
+        trackableId: t.id as string, targetCount: 8,
+        startsOn: todayUTC(-10), endsOn: todayUTC(17), stakedCoins: 40,
+      });
+      await seedHistoricalCompletion(t.id as string, todayUTC(-2), 10, 0, 1);
+      await seedHistoricalCompletion(t.id as string, todayUTC(-1), 10, 0, 2);
+
+      const before = await ledgerBalance();
+      const first = await testClient.rpc("fn_bank_goal_checkpoint", { p_id: id });
+      expect(first.error).toBeNull();
+      expect(first.data.banked).toBe(1);
+      expect(first.data.payout).toBe(10); // floor(40/4)
+      expect(await ledgerBalance()).toBe(before + 10);
+
+      // Same progress, nothing new earned -> must refuse, not pay again.
+      const second = await testClient.rpc("fn_bank_goal_checkpoint", { p_id: id });
+      expect(second.error).not.toBeNull();
+      expect(await ledgerBalance()).toBe(before + 10);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("pays exactly once when two banks race — the double-pay guard", async () => {
+    const t = await makeTrackable({ kind: "habit", createdAt: todayUTC(-30) });
+    try {
+      const id = await seedPledge({
+        trackableId: t.id as string, targetCount: 8,
+        startsOn: todayUTC(-10), endsOn: todayUTC(17), stakedCoins: 40,
+      });
+      await seedHistoricalCompletion(t.id as string, todayUTC(-2), 10, 0, 1);
+      await seedHistoricalCompletion(t.id as string, todayUTC(-1), 10, 0, 2);
+
+      const before = await ledgerBalance();
+      // Fire simultaneously: without the `for update` lock both would read
+      // checkpoints_banked = 0 and both insert a pledge_return.
+      const [a, b] = await Promise.all([
+        testClient.rpc("fn_bank_goal_checkpoint", { p_id: id }),
+        testClient.rpc("fn_bank_goal_checkpoint", { p_id: id }),
+      ]);
+      const succeeded = [a, b].filter((r) => !r.error).length;
+      expect(succeeded).toBe(1); // exactly one wins
+      expect(await ledgerBalance()).toBe(before + 10); // paid once, not twice
+      expect((await getPledge(id)).checkpoints_banked).toBe(1);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("returns the whole stake plus bonus and grants the title on completion", async () => {
+    const t = await makeTrackable({ kind: "habit", createdAt: todayUTC(-30) });
+    try {
+      const id = await seedPledge({
+        trackableId: t.id as string, targetCount: 8,
+        startsOn: todayUTC(-10), endsOn: todayUTC(17), stakedCoins: 40,
+      });
+      for (let i = 8; i >= 1; i--) {
+        await seedHistoricalCompletion(t.id as string, todayUTC(-i), 10, 0, 9 - i);
+      }
+      expect(await hasTitleGrant("marathoner")).toBe(false);
+
+      const before = await ledgerBalance();
+      const { data, error } = await testClient.rpc("fn_bank_goal_checkpoint", { p_id: id });
+      expect(error).toBeNull();
+      expect(data.kept).toBe(true);
+      expect(data.payout).toBe(40); // full stake, banked in one go
+      expect(data.bonus).toBe(20); // 50% of 40
+      expect(await ledgerBalance()).toBe(before + 60);
+      expect((await getPledge(id)).state).toBe("kept");
+      expect(await hasTitleGrant("marathoner")).toBe(true);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("settling an elapsed window banks what was EARNED before forfeiting the rest", async () => {
+    // The fairness case: 4/8 done (checkpoint 2 reached) but never banked, and
+    // the window has closed. They must still get those two checkpoints.
+    const t = await makeTrackable({ kind: "habit", createdAt: todayUTC(-40) });
+    try {
+      const id = await seedPledge({
+        trackableId: t.id as string, targetCount: 8,
+        startsOn: todayUTC(-30), endsOn: todayUTC(-2), stakedCoins: 40,
+      });
+      for (let i = 20; i >= 17; i--) {
+        await seedHistoricalCompletion(t.id as string, todayUTC(-i), 10, 0, 21 - i);
+      }
+
+      const before = await ledgerBalance();
+      const { data, error } = await testClient.rpc("fn_settle_goal", { p_id: id });
+      expect(error).toBeNull();
+      expect(data.state).toBe("forfeited");
+      expect(data.payout).toBe(20); // 2 of 4 checkpoints = 2 * floor(40/4)
+      expect(data.forfeited).toBe(20); // only the unearned half is lost
+      expect(await ledgerBalance()).toBe(before + 20);
+      expect(await hasTitleGrant("marathoner")).toBe(false);
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("refuses to settle a window that hasn't ended, and is idempotent once settled", async () => {
+    const t = await makeTrackable({ kind: "habit", createdAt: todayUTC(-30) });
+    try {
+      const live = await seedPledge({
+        trackableId: t.id as string, targetCount: 8,
+        startsOn: todayUTC(-5), endsOn: todayUTC(20), stakedCoins: 40,
+      });
+      const tooEarly = await testClient.rpc("fn_settle_goal", { p_id: live });
+      expect(tooEarly.error).not.toBeNull();
+
+      const done = await seedPledge({
+        trackableId: t.id as string, targetCount: 8,
+        startsOn: todayUTC(-40), endsOn: todayUTC(-30), stakedCoins: 40,
+      });
+      const first = await testClient.rpc("fn_settle_goal", { p_id: done });
+      expect(first.error).toBeNull();
+      const bal = await ledgerBalance();
+      const again = await testClient.rpc("fn_settle_goal", { p_id: done });
+      expect(again.error).toBeNull();
+      expect(again.data.alreadySettled).toBe(true);
+      expect(await ledgerBalance()).toBe(bal); // no second payout
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("abandoning banks the earned part and forfeits the remainder", async () => {
+    const t = await makeTrackable({ kind: "habit", createdAt: todayUTC(-30) });
+    try {
+      const id = await seedPledge({
+        trackableId: t.id as string, targetCount: 8,
+        startsOn: todayUTC(-10), endsOn: todayUTC(17), stakedCoins: 40,
+      });
+      await seedHistoricalCompletion(t.id as string, todayUTC(-2), 10, 0, 1);
+      await seedHistoricalCompletion(t.id as string, todayUTC(-1), 10, 0, 2);
+
+      const before = await ledgerBalance();
+      const { data, error } = await testClient.rpc("fn_abandon_pledge", { p_id: id });
+      expect(error).toBeNull();
+      expect(data.payout).toBe(10); // checkpoint 1 was genuinely earned
+      expect(data.forfeited).toBe(30);
+      expect(await ledgerBalance()).toBe(before + 10);
+      expect((await getPledge(id)).state).toBe("forfeited");
+
+      // A settled pledge can't be banked afterwards.
+      const late = await testClient.rpc("fn_bank_goal_checkpoint", { p_id: id });
+      expect(late.error).not.toBeNull();
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("refuses to act on another user's pledge", async () => {
+    // security definer means RLS no longer filters — the explicit
+    // `user_id = auth.uid()` in each RPC is the only thing stopping this.
+    const other = await makeOtherUser();
+    try {
+      const { data: t } = await other.client
+        .from("trackables")
+        .insert({
+          user_id: other.userId, kind: "habit", name: "[TEST] theirs",
+          emoji: "🧪", difficulty: "easy", coin_value: 10, period: "day", quota: 1,
+        })
+        .select()
+        .single();
+
+      const theirGoal = await (async () => {
+        const { Client } = await import("pg");
+        const c = new Client({ connectionString: process.env.DATABASE_URL! });
+        await c.connect();
+        const { rows } = await c.query(
+          `insert into goals (user_id, trackable_id, target_count, starts_on, ends_on, staked_coins)
+           values ($1,$2,8,$3,$4,40) returning id`,
+          [other.userId, t.id, todayUTC(-10), todayUTC(17)]
+        );
+        await c.end();
+        return rows[0].id as string;
+      })();
+
+      for (const fn of ["fn_bank_goal_checkpoint", "fn_settle_goal", "fn_abandon_pledge"]) {
+        const { error } = await testClient.rpc(fn, { p_id: theirGoal });
+        expect(error, `${fn} must reject another user's pledge`).not.toBeNull();
+      }
+
+      const { Client } = await import("pg");
+      const c = new Client({ connectionString: process.env.DATABASE_URL! });
+      await c.connect();
+      await c.query(`delete from goals where id = $1`, [theirGoal]);
+      await c.query(`delete from trackables where id = $1`, [t.id]);
+      await c.end();
+    } finally {
+      // buddy accounts are reused; nothing else to tear down
     }
   });
 });

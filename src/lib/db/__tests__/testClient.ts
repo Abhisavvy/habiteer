@@ -376,3 +376,91 @@ export async function makeCompetitor(week: string, xp: number) {
 export async function sweepLedgerRow(id: string) {
   await admin((c) => c.query(`delete from coin_ledger where id = $1`, [id]));
 }
+
+/** Funds the test account to at least `target` coins by completing throwaway
+ * hard tasks (+26 each — `completions` is unique per trackable per day, so this
+ * needs a distinct task per completion). Returns a cleanup for all of them.
+ *
+ * There is no seedCoins shortcut: coin_ledger is SELECT-only since Phase S, and
+ * seeding it via the admin connection would bypass the very RPC path a staking
+ * test wants funded through. Earning it for real is the honest arrangement. */
+export async function fundCoins(target: number): Promise<() => Promise<void>> {
+  const ids: string[] = [];
+  while ((await ledgerBalance()) < target) {
+    const t = await makeTrackable({ kind: "task", difficulty: "hard", name: "stake-funding" });
+    ids.push(t.id as string);
+    const { error } = await testClient.rpc("fn_complete_trackable", { p_id: t.id });
+    if (error) throw error;
+  }
+  return async () => {
+    for (const id of ids) await cleanupTrackable(id);
+  };
+}
+
+/** Admin-side pledge teardown: goals is SELECT-only, so a test can't delete its
+ * own pledge rows, and the ledger rows are keyed by ref_id = goal.id. */
+export async function cleanupPledges() {
+  const uid = await testUserId();
+  await admin(async (c) => {
+    await c.query(
+      `delete from coin_ledger where user_id = $1
+         and kind in ('pledge','pledge_return','pledge_bonus','pledge_forfeit')`,
+      [uid]
+    );
+    await c.query(`delete from goals where user_id = $1`, [uid]);
+    await c.query(`delete from title_grants where user_id = $1`, [uid]);
+    await c.query(`update profiles set title_id = 'novice' where id = $1`, [uid]);
+  });
+}
+
+/** Creates a pledge directly (admin) so tests can arrange a mid-flight or
+ * already-elapsed pledge without waiting real days. Bypasses fn_create_pledge
+ * ON PURPOSE — the RPC refuses past windows — but never bypasses the RPC being
+ * TESTED. Does not touch the ledger, so pair it with an explicit stake debit if
+ * the test asserts on balance. */
+export async function seedPledge(opts: {
+  trackableId: string;
+  targetCount: number;
+  startsOn: string;
+  endsOn: string;
+  stakedCoins: number;
+  state?: string;
+  checkpointsBanked?: number;
+}): Promise<string> {
+  const uid = await testUserId();
+  return admin(async (c) => {
+    const { rows } = await c.query(
+      `insert into goals (user_id, trackable_id, target_count, starts_on, ends_on,
+                          staked_coins, state, checkpoints_banked)
+       values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+      [uid, opts.trackableId, opts.targetCount, opts.startsOn, opts.endsOn,
+       opts.stakedCoins, opts.state ?? "active", opts.checkpointsBanked ?? 0]
+    );
+    return rows[0].id as string;
+  });
+}
+
+/** Reads a pledge row as admin (goals is SELECT-only for the client, but the
+ * client CAN read its own — this exists for reading state after settlement
+ * without another round trip through PostgREST's shape). */
+export async function getPledge(id: string) {
+  return admin(async (c) => {
+    const { rows } = await c.query(
+      `select state, checkpoints_banked, staked_coins, settled_at from goals where id = $1`,
+      [id]
+    );
+    return rows[0] as { state: string; checkpoints_banked: number; staked_coins: number; settled_at: string | null };
+  });
+}
+
+/** Whether the test user currently holds a given earned title. */
+export async function hasTitleGrant(titleId: string): Promise<boolean> {
+  const uid = await testUserId();
+  return admin(async (c) => {
+    const { rows } = await c.query(
+      `select 1 from title_grants where user_id = $1 and title_id = $2`,
+      [uid, titleId]
+    );
+    return rows.length > 0;
+  });
+}
