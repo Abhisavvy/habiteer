@@ -2640,3 +2640,129 @@ screens with a genuinely fresh bundle is worth something, but it is NOT
 equivalent to a full interactive check. Flagged honestly rather than
 rounded up to "device-verified," matching this project's standing
 convention.
+
+---
+
+## Phase P — the staked pledge (server + client complete; device pass outstanding)
+
+### Why this phase exists
+You said the long-horizon goals were "basic and not intuitive, doesn't
+connect to the player." That was correct, and the cause was my own Phase R
+plan, which explicitly scoped out any reward: *"no bonus reward for meeting a
+goal — it stays a read-only lens, not a new payout surface."* Defensible
+engineering, but it left a progress report sitting inside a game. A goal
+became the only thing in the app you never *did* anything with. You picked
+the staked-pledge direction and chose to build the earned title properly with
+a real grant table.
+
+Planning it surfaced three live vulnerabilities unrelated to pledges, which
+became **Phase S** and shipped first (see its own section) — staking coins on
+a currency anyone could mint would have been theatre.
+
+### The mechanic
+Stake coins to commit. Four checkpoints pay the stake back in pieces as you
+progress; finishing returns the whole stake plus a 50% bonus and grants the
+`marathoner` title. Missing the window forfeits only what you never banked.
+
+That last rule is the one that matters. `fn_settle_goal` and
+`fn_abandon_pledge` both bank every EARNED checkpoint *before* forfeiting the
+remainder — otherwise someone who hit 20/20 and never tapped Bank would lose
+the whole stake at midnight, which would be us keeping money they
+demonstrably earned. There is a test asserting exactly that split (4/8 done,
+window closed → 20 paid, 20 forfeited).
+
+### Server
+Four RPCs in `rpc.sql`, all `security definer`, all opening with
+`perform 1 from profiles where id = auth.uid() for update`, all checking
+`user_id = auth.uid()` explicitly (definer means RLS no longer filters them,
+so that check is the entire privilege boundary):
+`fn_create_pledge`, `fn_bank_goal_checkpoint`, `fn_settle_goal`,
+`fn_abandon_pledge`. New ledger kinds: `pledge`, `pledge_return`,
+`pledge_bonus`, `pledge_forfeit`.
+
+Details that were easy to get wrong and are deliberately not:
+- **Payouts are cumulative** — `total(n) - total(banked)` — so banking three
+  checkpoints at once can't drift from banking them one at a time, and the
+  four payouts sum to exactly the stake for any integer (50 → 12/12/12/14,
+  11 → 2/2/2/5). Tested across a range of stakes.
+- **`ceil(target * i / 4.0)`, not `/ 4`** in SQL. Integer division truncates
+  *before* `ceil` runs, making `ceil` a no-op — target 10 would give
+  thresholds 2,5,7,10 instead of `Math.ceil`'s 3,5,8,10, i.e. the server
+  paying a checkpoint one completion earlier than the UI promised.
+- **`GOAL_TARGET_MIN = 8` is a coin printer guard, not ergonomics.** At
+  target 1 all four thresholds are 1, so one completion would return the
+  entire stake plus bonus, repeatable daily.
+- **The `goals` EXCLUDE constraint is now partial** —
+  `WHERE (state = 'active')` — so terminal pledges are retained as
+  settlement records without blocking a new pledge on the same habit.
+- **Forfeits write a `delta = 0` ledger row.** Accounting-wise unnecessary
+  (the stake left at creation), but without it the original `-50` is
+  unexplainable from the append-only ledger alone.
+- **The title is gated on `staked_coins >= GOAL_STAKE_MIN`**, so a legacy
+  zero-stake goals row can't mint `marathoner` for free.
+
+### The concurrency guard is the load-bearing one
+Without the row lock, two rapid Bank taps both read `checkpoints_banked = 0`
+and both insert a `pledge_return`. The test fires two simultaneous calls and
+asserts exactly one succeeds and the balance moves once — it reads 2 and
+double-pays without the lock. Same class of bug the Phase S audit found
+already live in `fn_redeem_reward`.
+
+### Client
+- `goals/api.ts` rewritten to call the RPCs; the raw insert/delete is gone.
+  `deleteGoal` is **deliberately deleted** rather than kept — deleting a
+  staked pledge would be a full refund, i.e. a free undo of the commitment.
+- Every pledge mutation invalidates `["coinBalance"]` and `["profile"]`
+  alongside `["goals"]`, or the coin HUD and the newly-granted title go
+  stale until a cold start.
+- `GoalPanel` gained a stake stepper and shows the **checkpoint ladder
+  before you stake** — asking someone to put coins at risk without showing
+  exactly how they come back is how a commitment mechanic reads as a
+  punishment mechanic.
+- New `PledgeRow` on Stats: threshold dots (earned/banked), progress + pace,
+  coins at risk, and a Bank / Collect / Give up action. Settlement is offered
+  as an explicit tap, not fired on render — a silent coin movement on
+  screen-open makes an economy feel arbitrary.
+- Today's card chip is `🤝 n/m`, turning **jade with a 🪙** when a checkpoint
+  is bankable, plus a header line ("Ember is holding 🪙 N on your pledge").
+  A commitment you can't see isn't doing its job.
+- The cosmetics picker now reads `title_grants`: `marathoner`'s sentinel
+  unlock level is 9999, so the level comparison alone would have rendered
+  "LVL 9999", which reads as a bug rather than a rule. It says
+  "KEEP A PLEDGE".
+
+### Edge case closed with a real constraint, not a UI guard
+**Archiving a habit mid-pledge would strand the stake** —
+`fn_complete_trackable` raises on an archived habit, so no further progress
+and no checkpoint would ever be reachable. Blocked in the `trackables` RLS
+WITH CHECK (`archived_at is null or not exists (active goal)`), TDD'd
+red-first, with the `42501` translated in `archiveTrackable` into "This habit
+has a live pledge on it. Settle or give up the pledge first."
+
+### Verification
+- `npx tsc --noEmit` clean. Full suite **207/210** — the 3 failures are the
+  same long-standing live-account drift (freeze-token XP baseline, test
+  account past level 5), unchanged from before this phase.
+- New coverage: 6 `pledgeView` cases (pure), 12 pledge RPC integration tests
+  including the two-simultaneous-Bank race and the cross-user rejection of
+  all three acting RPCs, and 3 archive-block cases.
+- After `db:apply-sql`: RLS confirmed **ON for all 13 tables**, 15 policies,
+  and every money-carrying table (`coin_ledger`, `completions`,
+  `freeze_tokens`, `goals`, `league_standings`, `quest_claims`,
+  `title_grants`) confirmed **SELECT-only**.
+
+### Process notes, stated rather than glossed
+- **The RPC tests were written after the RPCs, not red-first.** The SQL was
+  already applied when this step began, so red wasn't reachable for them.
+  The `pledgeView` and archive-block tests *were* confirmed red first. The
+  concurrency assertion is still a real proof — it reads 2 without the lock.
+- **Test helpers had to grow** because Phase S closed `goals` and
+  `coin_ledger` to clients: a test can neither seed a mid-flight pledge nor
+  clean up after one as itself. `seedPledge`/`cleanupPledges`/`getPledge` go
+  through the admin `pg` connection. `fundCoins` deliberately earns coins
+  through `fn_complete_trackable` rather than inserting ledger rows — faking
+  the balance would skip the very path a staking test wants funded through.
+- **No device pass yet** — no device was attached at the end of this phase.
+  Everything above is `tsc` + vitest + live-DB verified; nothing about how
+  the pledge panel, ladder, Bank button, or header line actually *look and
+  behave on the phone* has been confirmed. Outstanding, not assumed fine.

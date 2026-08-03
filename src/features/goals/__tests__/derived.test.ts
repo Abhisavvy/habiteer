@@ -5,6 +5,7 @@ import {
   checkpointThreshold,
   checkpointPayoutTotal,
   completionBonus,
+  pledgeView,
   type Goal,
 } from "../derived";
 import type { Completion } from "@/features/completions/api";
@@ -24,7 +25,17 @@ function completion(overrides: Partial<Completion>): Completion {
 }
 
 function goal(overrides: Partial<Goal>): Goal {
-  return { id: "g1", trackableId: "t1", targetCount: 10, startsOn: "2026-01-01", endsOn: "2026-01-14", ...overrides };
+  return {
+    id: "g1",
+    trackableId: "t1",
+    targetCount: 10,
+    startsOn: "2026-01-01",
+    endsOn: "2026-01-14",
+    stakedCoins: 40,
+    state: "active",
+    checkpointsBanked: 0,
+    ...overrides,
+  };
 }
 
 describe("goalStatus", () => {
@@ -155,5 +166,63 @@ describe("completionBonus", () => {
   it("rounds a fractional bonus to a whole coin", () => {
     expect(completionBonus(11)).toBe(6); // 5.5 -> 6
     expect(completionBonus(13)).toBe(7); // 6.5 -> 7
+  });
+});
+
+describe("pledgeView", () => {
+  it("reports nothing bankable before the first checkpoint", () => {
+    // target 8 → thresholds 2,4,6,8. One completion clears none of them.
+    const v = pledgeView(goal({ targetCount: 8, stakedCoins: 40 }), 1);
+    expect(v.earnedCheckpoints).toBe(0);
+    expect(v.bankable).toBe(0);
+    expect(v.pendingPayout).toBe(0);
+    expect(v.atRisk).toBe(40);
+  });
+
+  it("reports one checkpoint's worth pending once its threshold is reached", () => {
+    const v = pledgeView(goal({ targetCount: 8, stakedCoins: 40 }), 2);
+    expect(v.earnedCheckpoints).toBe(1);
+    expect(v.bankable).toBe(1);
+    expect(v.pendingPayout).toBe(10); // floor(40/4)
+    expect(v.atRisk).toBe(30); // the three unearned checkpoints
+  });
+
+  it("does not re-offer a checkpoint that was already banked", () => {
+    const v = pledgeView(goal({ targetCount: 8, stakedCoins: 40, checkpointsBanked: 1 }), 2);
+    expect(v.earnedCheckpoints).toBe(1);
+    expect(v.bankable).toBe(0);
+    expect(v.pendingPayout).toBe(0);
+    expect(v.atRisk).toBe(30); // banked coins are safe; the rest is still at risk
+  });
+
+  it("accumulates several checkpoints reached since the last bank", () => {
+    // Skipping straight from 0 banked to 3 earned must pay all three at once,
+    // matching what the RPC's total(n) - total(banked) computes.
+    const v = pledgeView(goal({ targetCount: 8, stakedCoins: 40, checkpointsBanked: 0 }), 6);
+    expect(v.earnedCheckpoints).toBe(3);
+    expect(v.bankable).toBe(3);
+    expect(v.pendingPayout).toBe(30);
+    expect(v.atRisk).toBe(10);
+  });
+
+  it("puts nothing at risk once the target is fully met", () => {
+    const v = pledgeView(goal({ targetCount: 8, stakedCoins: 40 }), 8);
+    expect(v.earnedCheckpoints).toBe(4);
+    expect(v.pendingPayout).toBe(40); // the whole stake, banked in one tap
+    expect(v.atRisk).toBe(0);
+  });
+
+  it("trues up an indivisible stake so the four payouts sum to exactly the stake", () => {
+    // 11 coins: floor(11/4) = 2, so checkpoints 1–3 pay 2 each and the last
+    // pays the 5-coin remainder. Nothing is created or destroyed.
+    const g = goal({ targetCount: 8, stakedCoins: 11 });
+    expect(pledgeView(g, 2).pendingPayout).toBe(2);
+    expect(pledgeView(g, 6).pendingPayout).toBe(6);
+    expect(pledgeView(g, 8).pendingPayout).toBe(11);
+    expect(pledgeView(g, 8).atRisk).toBe(0);
+  });
+
+  it("exposes the thresholds in order for the UI's ladder", () => {
+    expect(pledgeView(goal({ targetCount: 10 }), 0).thresholds).toEqual([3, 5, 8, 10]);
   });
 });

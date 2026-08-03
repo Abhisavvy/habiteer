@@ -52,11 +52,12 @@ export function TrackableCard({
   onToggleComplete: (pageX: number, pageY: number) => void;
   completing?: boolean;
   skinBg?: string;
-  /** An active long-horizon goal's progress, if one exists — glance-only,
-   * like the other pills here. The caller (Today) decides when to pass
-   * this (only for a goal in its "active" state; upcoming/met/missed are
-   * Stats' job, not a persistent daily-card badge). */
-  goalChip?: { progress: number; targetCount: number } | null;
+  /** A live pledge's progress, if one exists — glance-only, like the other
+   * pills here. The caller (Today) decides when to pass this; settled pledges
+   * are Stats' job, not a persistent daily-card badge. `bankable` means coins
+   * are sitting unclaimed, which the pill says out loud rather than leaving the
+   * player to go looking. */
+  goalChip?: { progress: number; targetCount: number; bankable?: boolean } | null;
 }) {
   const tint = DIFF_TINT[trackable.difficulty];
   const lightTint = DIFF_LIGHT_TINT[trackable.difficulty];
@@ -158,9 +159,9 @@ export function TrackableCard({
             </View>
           )}
           {goalChip && (
-            <View style={styles.progressBadge}>
+            <View style={[styles.progressBadge, goalChip.bankable && styles.progressBadgeBankable]}>
               <Text style={styles.progressText}>
-                🎯 {goalChip.progress}/{goalChip.targetCount}
+                {goalChip.bankable ? "🪙" : "🤝"} {goalChip.progress}/{goalChip.targetCount}
               </Text>
             </View>
           )}
@@ -279,6 +280,9 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     backgroundColor: theme.color.gold,
   },
+  /** Jade, not gold: "there are coins waiting" should read as a reward cue,
+   * distinct from the neutral period-progress pill this style is shared with. */
+  progressBadgeBankable: { backgroundColor: theme.color.success, borderWidth: theme.borders.standard },
   progressText: { fontSize: 10, fontWeight: "700", color: INK, fontFamily: fonts.mono700 },
   comboBadge: { borderWidth: theme.borders.hairline, borderColor: theme.color.hero, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1, backgroundColor: LIGHT_VIOLET },
   comboText: { fontSize: 10, fontWeight: "700", color: theme.color.hero, fontFamily: fonts.mono700 },

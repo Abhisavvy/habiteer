@@ -20,6 +20,18 @@ export async function fetchProfile(): Promise<Profile> {
   };
 }
 
+/** Title ids the caller has EARNED by action rather than unlocked by level —
+ * currently just `marathoner`, granted by completing a staked pledge. The table
+ * has no client write policy at all (only the settlement RPC writes it), so
+ * this read is the only way the picker can tell a granted title from a locked
+ * one; its sentinel unlock level of 9999 makes the level arm of the RLS gate
+ * permanently unsatisfiable on purpose. */
+export async function fetchTitleGrants(): Promise<string[]> {
+  const { data, error } = await supabase.from("title_grants").select("title_id");
+  if (error) throw error;
+  return data.map((r) => r.title_id as string);
+}
+
 export async function updateDisplayName(displayName: string): Promise<void> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError) throw userError;

@@ -6,15 +6,17 @@ import { EquipPop } from "@/components/EquipPop";
 import { Halftone } from "@/components/Halftone";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
-import { useProfileQuery, useEquipCosmetic } from "@/features/profile/useProfile";
+import { useProfileQuery, useTitleGrantsQuery, useEquipCosmetic } from "@/features/profile/useProfile";
 import { useCompletionsQuery } from "@/features/completions/useCompletions";
 import { overallProgress } from "@/features/completions/derived";
 import { AVATAR_COLORS, TITLES, CARD_SKINS } from "@/features/cosmetics/catalog";
 
 export default function Cosmetics() {
   const { data: profile } = useProfileQuery();
+  const { data: titleGrants } = useTitleGrantsQuery();
   const { data: completions, isLoading } = useCompletionsQuery();
   const equipMutation = useEquipCosmetic();
+  const grants = titleGrants ?? [];
 
   const level = overallProgress(completions ?? []).level;
   const equippedColor = profile?.avatarColor ?? "violet";
@@ -69,7 +71,11 @@ export default function Cosmetics() {
             <Text style={styles.sectionLabel}>Title</Text>
             <View style={styles.titleList}>
               {TITLES.map((t) => {
-                const locked = level < t.level;
+                // An `earned` title's unlock level is an unreachable sentinel
+                // (9999), so the level comparison would always read "locked"
+                // and render "LVL 9999" — which looks like a bug rather than a
+                // rule. Earned titles are gated on the grant row instead.
+                const locked = t.earned ? !grants.includes(t.id) : level < t.level;
                 const equipped = equippedTitle === t.id;
                 return (
                   <EquipPop key={t.id} equipped={equipped}>
@@ -82,7 +88,7 @@ export default function Cosmetics() {
                       {locked ? (
                         <View style={styles.titleLockBadge}>
                           <Lock size={12} strokeWidth={2.5} color={theme.color.ink} />
-                          <Text style={styles.titleLockText}>LVL {t.level}</Text>
+                          <Text style={styles.titleLockText}>{t.earned ? "KEEP A PLEDGE" : `LVL ${t.level}`}</Text>
                         </View>
                       ) : equipped ? (
                         <Text style={styles.titleEquippedText}>Equipped ✓</Text>

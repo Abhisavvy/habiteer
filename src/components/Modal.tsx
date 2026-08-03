@@ -161,19 +161,29 @@ export function ModalButton({
   onPress,
   variant,
   full,
+  disabled,
 }: {
   label: string;
   onPress: () => void;
   variant: keyof typeof VARIANT_STYLE;
   /** Single-button confirmations (insufficient-funds, streak-freeze) span the full card width instead of sharing a row. */
   full?: boolean;
+  /** Blocks the press AND the exit animation — a disabled confirm must not
+   * close the modal, or the action reads as having been accepted. */
+  disabled?: boolean;
 }) {
   const v = VARIANT_STYLE[variant];
   const requestExit = useContext(ModalExitContext);
   return (
     <HardShadow
-      style={[styles.button, !full && { flex: 1 }, { backgroundColor: v.backgroundColor, shadowColor: v.shadowColor }]}
-      onPress={() => (requestExit ? requestExit(onPress) : onPress())}
+      style={[
+        styles.button,
+        !full && { flex: 1 },
+        { backgroundColor: v.backgroundColor, shadowColor: v.shadowColor },
+        disabled && styles.buttonDisabled,
+      ]}
+      onPress={disabled ? undefined : () => (requestExit ? requestExit(onPress) : onPress())}
+      disabled={disabled}
       haptic={VARIANT_HAPTIC[variant]}
     >
       <Text style={[styles.buttonText, { color: v.color }]}>{label}</Text>
@@ -236,4 +246,5 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   buttonText: { fontWeight: "700", fontSize: 14, fontFamily: fonts.display700 },
+  buttonDisabled: { opacity: 0.45 },
 });

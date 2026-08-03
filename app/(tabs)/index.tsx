@@ -34,7 +34,7 @@ import { cardSkinFor } from "@/features/cosmetics/catalog";
 import { useReminderTap } from "@/features/navigation/reminderTap";
 import { feedbackComplete, feedbackLevelUp } from "@/features/feedback/feedback";
 import { useGoalsQuery } from "@/features/goals/useGoals";
-import { goalStatus } from "@/features/goals/derived";
+import { goalStatus, pledgeView } from "@/features/goals/derived";
 
 const LAPSED_DAYS_THRESHOLD = 3;
 
@@ -83,6 +83,23 @@ export default function Home() {
   useEffect(() => {
     if (lastKnownFreeze.current === null && freezeBalance !== undefined) lastKnownFreeze.current = freezeBalance;
   }, [freezeBalance]);
+
+  // Account-wide pledge state for the header line. Sums across every live
+  // pledge rather than picking one, since the question a player actually has is
+  // "how much of mine is riding on something right now".
+  const pledgeSummary = (() => {
+    const active = (goals ?? []).filter((g) => g.state === "active");
+    if (active.length === 0) return null;
+    let atRisk = 0;
+    let pending = 0;
+    for (const g of active) {
+      const v = pledgeView(g, goalStatus(g, allCompletions, todayStr).progress);
+      atRisk += v.atRisk;
+      pending += v.pendingPayout;
+    }
+    if (atRisk === 0 && pending === 0) return null;
+    return { count: active.length, atRisk, pending, bankable: pending > 0 };
+  })();
 
   const setAddHandler = useAddAction((s) => s.setHandler);
   useFocusEffect(
@@ -153,6 +170,18 @@ export default function Home() {
         </View>
         <LevelBar level={progress.level} intoLevel={progress.intoLevel} need={progress.need} />
         {isLapsed && <Text style={styles.welcomeBack}>👋 Welcome back — pick up where you left off.</Text>}
+        {/* Ember is holding the stake. Shown in the header, next to the coin
+            badge, because a commitment you can't see isn't doing its job — the
+            whole point of staking is that it's on your mind on an ordinary day,
+            not buried on the Stats screen. Only the genuinely-unearned part is
+            counted, so it shrinks as checkpoints land. */}
+        {pledgeSummary && (
+          <Text style={pledgeSummary.bankable ? styles.pledgeReady : styles.pledgeHeld}>
+            {pledgeSummary.bankable
+              ? `🪙 ${pledgeSummary.pending} ready to bank — open Stats to claim it.`
+              : `🤝 Ember is holding 🪙 ${pledgeSummary.atRisk} on ${pledgeSummary.count === 1 ? "your pledge" : `${pledgeSummary.count} pledges`}.`}
+          </Text>
+        )}
         <View style={styles.dateRow}>
           <Text style={styles.dateLabel}>{dateLabel}</Text>
           {dueToday.length > 0 && (
@@ -196,9 +225,21 @@ export default function Home() {
         <View style={styles.list}>
           {dueToday.map((t, i) => {
             const status = dueStatuses[i];
-            const goalRow = (goals ?? []).find((g) => g.trackableId === t.id);
+            // Only a LIVE pledge earns a chip. Filtering on state matters now
+            // that settled pledges are retained as records — `find` alone would
+            // happily surface a months-old forfeited one as if it were running.
+            const goalRow = (goals ?? []).find((g) => g.trackableId === t.id && g.state === "active");
             const gStatus = goalRow ? goalStatus(goalRow, allCompletions, todayStr) : null;
-            const goalChip = gStatus?.state === "active" ? { progress: gStatus.progress, targetCount: gStatus.goal.targetCount } : null;
+            const goalChip =
+              gStatus && gStatus.state !== "missed"
+                ? {
+                    progress: gStatus.progress,
+                    targetCount: gStatus.goal.targetCount,
+                    // Coins are sitting unclaimed — worth flagging here, since
+                    // Today is the screen people actually open.
+                    bankable: pledgeView(gStatus.goal, gStatus.progress).bankable > 0,
+                  }
+                : null;
             return (
               <StaggerItem key={t.id} index={i}>
                 <TrackableCard
@@ -335,6 +376,8 @@ const styles = StyleSheet.create({
   dateRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
   dateLabel: { fontSize: 16, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.display700 },
   welcomeBack: { fontSize: 12.5, fontWeight: "700", color: theme.color.hero, fontFamily: fonts.display600, marginTop: 4 },
+  pledgeHeld: { fontSize: 11.5, fontWeight: "700", color: "rgba(36,27,51,0.6)", fontFamily: fonts.mono700, marginTop: 4 },
+  pledgeReady: { fontSize: 11.5, fontWeight: "700", color: theme.color.success, fontFamily: fonts.mono700, marginTop: 4 },
   doneCountPill: {
     borderWidth: theme.borders.hairline,
     borderColor: theme.color.ink,

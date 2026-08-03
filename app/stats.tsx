@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
@@ -7,21 +7,32 @@ import { Halftone } from "@/components/Halftone";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
 import { useTrackablesQuery } from "@/features/trackables/useTrackables";
-import { useCompletionsQuery } from "@/features/completions/useCompletions";
+import { useCompletionsQuery, useCoinBalanceQuery } from "@/features/completions/useCompletions";
 import { today } from "@/features/trackables/today";
 import { periodProgress } from "@/features/gamification/streak";
 import { habitStats, coinsPerWeek, bestStreakHabit } from "@/features/stats/derived";
-import { useGoalsQuery, useCreateGoal, useDeleteGoal } from "@/features/goals/useGoals";
+import {
+  useGoalsQuery,
+  useCreatePledge,
+  useBankCheckpoint,
+  useSettleGoal,
+  useAbandonPledge,
+} from "@/features/goals/useGoals";
 import { goalStatus } from "@/features/goals/derived";
 import { GoalPanel } from "@/features/goals/components/GoalPanel";
+import { PledgeRow } from "@/features/goals/components/PledgeRow";
 import type { Trackable } from "@/features/trackables/api";
+import type { Goal } from "@/features/goals/api";
 
 export default function Stats() {
   const { data: trackables, isLoading: loadingTrackables } = useTrackablesQuery();
   const { data: completions, isLoading: loadingCompletions } = useCompletionsQuery();
   const { data: goals } = useGoalsQuery();
-  const createGoalMutation = useCreateGoal();
-  const deleteGoalMutation = useDeleteGoal();
+  const { data: coinBalance } = useCoinBalanceQuery();
+  const createPledgeMutation = useCreatePledge();
+  const bankMutation = useBankCheckpoint();
+  const settleMutation = useSettleGoal();
+  const abandonMutation = useAbandonPledge();
   const [goalPanelFor, setGoalPanelFor] = useState<Trackable | null>(null);
 
   const isLoading = loadingTrackables || loadingCompletions;
@@ -35,13 +46,21 @@ export default function Stats() {
   const weeks = coinsPerWeek(allCompletions, todayStr, 8);
   const maxWeekCoins = Math.max(1, ...weeks.map((w) => w.coins));
 
-  // Clears an ended (met/missed) goal before offering a fresh one — a "met"
-  // goal's window often hasn't ENDED yet (met mid-window), and the DB's
-  // exclusion constraint would reject a new overlapping goal on the same
-  // habit otherwise. Safe for "missed" too (just a no-op extra round trip).
-  const startNewGoal = (t: Trackable, oldGoalId: string) => {
-    deleteGoalMutation.mutate(oldGoalId, { onSuccess: () => setGoalPanelFor(t) });
+  const pledgeBusy =
+    createPledgeMutation.isPending ||
+    bankMutation.isPending ||
+    settleMutation.isPending ||
+    abandonMutation.isPending;
+
+  // A habit accumulates pledge rows over time — terminal ones are settlement
+  // records and are never deleted. The live one is what the UI acts on; when
+  // there's none, the most recent finished one is the interesting history.
+  const pledgeFor = (trackableId: string): Goal | null => {
+    const mine = (goals ?? []).filter((g) => g.trackableId === trackableId);
+    return mine.find((g) => g.state === "active") ?? [...mine].sort((a, b) => (a.endsOn < b.endsOn ? 1 : -1))[0] ?? null;
   };
+
+  const onPledgeError = (verb: string) => (e: Error) => Alert.alert(`Couldn't ${verb}`, e.message);
 
   return (
     <View style={styles.root}>
@@ -122,7 +141,7 @@ export default function Stats() {
                       : 0;
                 const pct = Math.round(rate * 100);
                 const rateColor = rate >= 0.75 ? theme.color.success : rate >= 0.4 ? theme.color.gold : theme.color.ember;
-                const goalRow = (goals ?? []).find((g) => g.trackableId === t.id);
+                const goalRow = pledgeFor(t.id);
                 const gStatus = goalRow ? goalStatus(goalRow, allCompletions, todayStr) : null;
                 return (
                   <View key={t.id} style={styles.habitRow}>
@@ -138,41 +157,20 @@ export default function Stats() {
                     <Text style={styles.habitMeta}>
                       🔥 {stats.currentStreak} now · {stats.longestStreak} best · 🪙 {stats.coinsEarned}
                     </Text>
-                    <View style={styles.goalRow}>
-                      {!gStatus ? (
-                        <Pressable onPress={() => setGoalPanelFor(t)}>
-                          <Text style={styles.goalLink}>🎯 Set a goal</Text>
-                        </Pressable>
-                      ) : gStatus.state === "met" ? (
-                        <>
-                          <Text style={styles.goalText}>
-                            🎯 Goal met! {gStatus.progress}/{gStatus.goal.targetCount} 🎉
-                          </Text>
-                          <Pressable onPress={() => startNewGoal(t, gStatus.goal.id)}>
-                            <Text style={styles.goalLink}>Set a new goal</Text>
-                          </Pressable>
-                        </>
-                      ) : gStatus.state === "missed" ? (
-                        <>
-                          <Text style={styles.goalText}>
-                            🎯 Goal ended · {gStatus.progress}/{gStatus.goal.targetCount}
-                          </Text>
-                          <Pressable onPress={() => startNewGoal(t, gStatus.goal.id)}>
-                            <Text style={styles.goalLink}>Set a new goal</Text>
-                          </Pressable>
-                        </>
-                      ) : (
-                        <>
-                          <Text style={styles.goalText}>
-                            🎯 {gStatus.progress}/{gStatus.goal.targetCount} ·{" "}
-                            {gStatus.state === "upcoming" ? "starts soon" : gStatus.onPace ? "on pace" : "behind pace"}
-                          </Text>
-                          <Pressable onPress={() => deleteGoalMutation.mutate(gStatus.goal.id)}>
-                            <Text style={styles.goalRemove}>Remove</Text>
-                          </Pressable>
-                        </>
-                      )}
-                    </View>
+                    <PledgeRow
+                      status={gStatus}
+                      busy={pledgeBusy}
+                      onPledge={() => setGoalPanelFor(t)}
+                      onBank={() =>
+                        gStatus && bankMutation.mutate(gStatus.goal.id, { onError: onPledgeError("bank that") })
+                      }
+                      onSettle={() =>
+                        gStatus && settleMutation.mutate(gStatus.goal.id, { onError: onPledgeError("close that out") })
+                      }
+                      onAbandon={() =>
+                        gStatus && abandonMutation.mutate(gStatus.goal.id, { onError: onPledgeError("give that up") })
+                      }
+                    />
                   </View>
                 );
               })}
@@ -184,13 +182,14 @@ export default function Stats() {
       {goalPanelFor && (
         <GoalPanel
           trackable={goalPanelFor}
+          balance={coinBalance ?? 0}
           visible
-          submitting={createGoalMutation.isPending}
+          submitting={createPledgeMutation.isPending}
           onCancel={() => setGoalPanelFor(null)}
           onSubmit={(values) => {
-            createGoalMutation.mutate(values, {
+            createPledgeMutation.mutate(values, {
               onSuccess: () => setGoalPanelFor(null),
-              onError: (e: Error) => Alert.alert("Couldn't set that goal", e.message),
+              onError: (e: Error) => Alert.alert("Couldn't make that pledge", e.message),
             });
           }}
         />
@@ -294,8 +293,4 @@ const styles = StyleSheet.create({
   },
   habitFill: { height: "100%" },
   habitMeta: { fontSize: 10.5, fontWeight: "700", color: "rgba(36,27,51,0.55)", fontFamily: fonts.mono700 },
-  goalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 2 },
-  goalText: { flex: 1, fontSize: 10.5, fontWeight: "700", color: theme.color.violet, fontFamily: fonts.mono700 },
-  goalLink: { fontSize: 10.5, fontWeight: "700", color: theme.color.violet, fontFamily: fonts.mono700, textDecorationLine: "underline" },
-  goalRemove: { fontSize: 10.5, fontWeight: "700", color: theme.color.ember, fontFamily: fonts.mono700, textDecorationLine: "underline" },
 });

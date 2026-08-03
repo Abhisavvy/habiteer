@@ -101,5 +101,14 @@ export async function updateTrackable(id: string, values: TrackableUpdateValues)
 
 export async function archiveTrackable(id: string): Promise<void> {
   const { error } = await supabase.from("trackables").update({ archived_at: new Date().toISOString() }).eq("id", id);
-  if (error) throw error;
+  // The trackables RLS WITH CHECK refuses to archive a habit carrying an active
+  // pledge, because completing it would then be impossible and the stake would
+  // be stranded. Translated here: the raw Postgres row-security message tells
+  // the player nothing about what to do next.
+  if (error) {
+    if (error.code === "42501") {
+      throw new Error("This habit has a live pledge on it. Settle or give up the pledge first.");
+    }
+    throw error;
+  }
 }

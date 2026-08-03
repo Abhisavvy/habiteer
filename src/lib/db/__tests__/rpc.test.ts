@@ -1325,3 +1325,62 @@ describe("pledges — banking, settlement and idempotency", () => {
     }
   });
 });
+
+describe("pledges — a staked habit can't be archived out from under the pledge", () => {
+  afterEach(async () => {
+    await cleanupPledges();
+  });
+
+  it("refuses to archive a habit that has an active pledge", async () => {
+    // fn_complete_trackable raises on an archived habit, so archiving mid-pledge
+    // would strand the stake: no further progress possible, no checkpoint
+    // reachable, coins gone. Blocked at the policy, not just in the UI.
+    const t = await makeTrackable({ kind: "habit" });
+    try {
+      await seedPledge({
+        trackableId: t.id as string, targetCount: 8,
+        startsOn: todayUTC(), endsOn: todayUTC(27), stakedCoins: 40,
+      });
+      const { error } = await testClient
+        .from("trackables")
+        .update({ archived_at: new Date().toISOString() })
+        .eq("id", t.id);
+      expect(error).not.toBeNull(); // WITH CHECK violation raises, unlike a missing policy
+    } finally {
+      await cleanupPledges();
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("still archives a habit whose pledge has been settled", async () => {
+    const t = await makeTrackable({ kind: "habit" });
+    try {
+      await seedPledge({
+        trackableId: t.id as string, targetCount: 8,
+        startsOn: todayUTC(-40), endsOn: todayUTC(-10), stakedCoins: 40,
+        state: "forfeited",
+      });
+      const { error } = await testClient
+        .from("trackables")
+        .update({ archived_at: new Date().toISOString() })
+        .eq("id", t.id);
+      expect(error).toBeNull();
+    } finally {
+      await cleanupPledges();
+      await cleanupTrackable(t.id);
+    }
+  });
+
+  it("still archives a habit that was never pledged on", async () => {
+    const t = await makeTrackable({ kind: "habit" });
+    try {
+      const { error } = await testClient
+        .from("trackables")
+        .update({ archived_at: new Date().toISOString() })
+        .eq("id", t.id);
+      expect(error).toBeNull();
+    } finally {
+      await cleanupTrackable(t.id);
+    }
+  });
+});

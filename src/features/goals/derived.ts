@@ -37,6 +37,52 @@ export function completionBonus(stakedCoins: number): number {
   return Math.round(stakedCoins * GOAL_BONUS_PCT);
 }
 
+export type PledgeView = {
+  /** Highest checkpoint whose threshold the progress has cleared. */
+  earnedCheckpoints: number;
+  /** Earned but not yet claimed — how many a single Bank tap would settle. */
+  bankable: number;
+  /** Coins that Bank tap would credit. */
+  pendingPayout: number;
+  /** Coins that would be lost if the window closed right now. Everything
+   * already banked is safe, and so is everything earned-but-unbanked, because
+   * settlement banks earned checkpoints before forfeiting. */
+  atRisk: number;
+  /** Completion counts for each checkpoint, ascending — the UI's ladder. */
+  thresholds: number[];
+};
+
+/**
+ * The bank/at-risk picture for one pledge, given its server-side progress.
+ *
+ * Mirrors what `fn_bank_goal_checkpoint` computes so the button's label agrees
+ * with what the tap actually pays. The server recounts progress itself and is
+ * authoritative — this exists so the UI can promise the right number, and so
+ * "Bank" is hidden rather than offered-then-rejected when nothing is due.
+ */
+export function pledgeView(goal: Goal, progress: number): PledgeView {
+  const thresholds = Array.from({ length: GOAL_CHECKPOINT_COUNT }, (_, i) =>
+    checkpointThreshold(goal.targetCount, i + 1)
+  );
+
+  let earnedCheckpoints = 0;
+  for (let i = 0; i < thresholds.length; i++) {
+    if (progress >= thresholds[i]) earnedCheckpoints = i + 1;
+  }
+
+  const banked = goal.checkpointsBanked;
+  const pendingPayout =
+    checkpointPayoutTotal(goal.stakedCoins, earnedCheckpoints) - checkpointPayoutTotal(goal.stakedCoins, banked);
+
+  return {
+    earnedCheckpoints,
+    bankable: Math.max(0, earnedCheckpoints - banked),
+    pendingPayout: Math.max(0, pendingPayout),
+    atRisk: goal.stakedCoins - checkpointPayoutTotal(goal.stakedCoins, Math.max(earnedCheckpoints, banked)),
+    thresholds,
+  };
+}
+
 export type { Goal } from "./api";
 export type GoalState = "upcoming" | "active" | "met" | "missed";
 

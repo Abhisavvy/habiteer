@@ -215,11 +215,23 @@ drop policy if exists "own trackables" on trackables;
 -- all). A plain edit to an existing day/weekday habit is untouched — period
 -- stays 'day' — so only creating or converting a habit *into* week/month
 -- recurrence needs level 5, per PLAN.md §9's "Lv 5 ... advanced recurrence".
+-- Phase P adds the second clause: a habit carrying an ACTIVE pledge cannot be
+-- archived. fn_complete_trackable raises on an archived habit, so archiving
+-- mid-pledge would strand the stake — no further progress possible, no
+-- checkpoint reachable, coins simply gone. The player has to settle or give up
+-- (which pays back everything earned) before the habit can leave the list.
+-- Enforced here rather than in the UI because the stake is real money to them.
 create policy "own trackables" on trackables for all
   using (user_id = auth.uid())
   with check (
     user_id = auth.uid()
     and (period is distinct from 'week' and period is distinct from 'month' or caller_level() >= 5)
+    and (
+      archived_at is null
+      or not exists (
+        select 1 from goals g where g.trackable_id = trackables.id and g.state = 'active'
+      )
+    )
   );
 
 -- v2 Phase 10: league tiers (PLAN.md §7, §9, §13 item 10).
