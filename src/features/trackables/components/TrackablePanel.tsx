@@ -105,6 +105,7 @@ export function TrackablePanel({
   const [weekdays, setWeekdays] = useState<number[]>(initial?.weekdays ?? []);
   const [quota, setQuota] = useState(String(initial?.quota && initial.quota > 1 ? initial.quota : 3));
   const [reminderTime, setReminderTime] = useState<string | null>(initial?.reminderTime ?? null);
+  const [why, setWhy] = useState(initial?.why ?? "");
 
   // Reminders make sense for any habit and for a dated task; an "anytime" task
   // has no time to anchor a notification to, so the picker is hidden there.
@@ -156,6 +157,9 @@ export function TrackablePanel({
       quota: kind === "habit" && isRecurrence ? Number(quota) || 1 : 1,
       dueOn: kind === "task" ? dueOn : null,
       reminderTime: showReminder ? reminderTime : null,
+      // Habit-only, and always skippable: empty input stores as null so
+      // "never filled in" and "typed then cleared" are the same state.
+      why: kind === "habit" && why.trim().length > 0 ? why.trim() : null,
     });
   };
 
@@ -293,6 +297,19 @@ export function TrackablePanel({
                   </Pressable>
                 ))}
               </View>
+            </View>
+
+            <View style={styles.row}>
+              <Text style={styles.label}>Why this matters (optional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="So I can keep up with my kids…"
+                placeholderTextColor="rgba(26,21,35,0.4)"
+                value={why}
+                onChangeText={setWhy}
+                maxLength={80}
+              />
+              <Text style={styles.hintMuted}>You'll see this again on a day your streak has slipped.</Text>
             </View>
 
             <View style={styles.row}>
@@ -551,6 +568,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono700,
   },
   hint: { fontSize: 12, fontWeight: "600", color: theme.color.fire },
+  hintMuted: { fontSize: 11, fontWeight: "600", color: "rgba(26,21,35,0.45)", fontFamily: fonts.display600 },
   actionsRow: { flexDirection: "row", gap: 12, marginTop: 2 },
   ghostBtn: {
     flex: 1,

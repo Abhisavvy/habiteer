@@ -1,5 +1,64 @@
 # PROGRESS
 
+## Phase R2 — Pre-commitment ritual
+
+The second (and last) research wedge from point 1, and the small one. The
+research finding behind it: most self-designed commitments carried **no**
+financial stake, and goal-labeling/identity carries real weight on its own —
+but ~39% abandon at the commitment step, so friction has to stay near zero.
+
+- **Schema**: one nullable `why` text column on `trackables` (`db:push`'d,
+  then **`db:apply-sql` re-run immediately** — push wipes RLS, the standing
+  lesson from every schema change this session; verified after: RLS on for
+  all tables, 14 policies present, column nullable as intended). Purely
+  descriptive — gates nothing, needs no RLS change of its own, same
+  precedent as `dueOn`/`reminderTime`.
+- **Validation** (`schemas.ts`): added to `FORM_FIELDS` plus a
+  `trim().max(80).nullable()` refinement. Capped at 80 chars deliberately —
+  this is a one-line pre-commitment prompt, not a journal entry.
+- **Client** (`api.ts`): `Trackable.why`, `mapRow`, and both the create
+  insert and the update patch, following the existing per-field pattern
+  exactly.
+- **Input** (`TrackablePanel.tsx`): a "Why this matters (optional)" text
+  field in the habit-only block, right after the Goal build/reduce control
+  (thematically adjacent). Habit-only — a one-off task doesn't need an
+  identity statement. Empty input normalizes to `null` on submit, so
+  "never filled in" and "typed then cleared" are the same stored state
+  rather than `""` vs `null` drift. A muted hint under the field tells the
+  user where it'll come back, so the ask isn't unexplained friction.
+- **The payoff surface — the actual design decision here.** The plan said
+  "surfaced back on the card or on a behind-day" and left it open. Chose:
+  render the quote on `TrackableCard` **only when `streak === 0` and it's
+  not done yet today** — i.e. exactly when momentum is gone and the user is
+  looking at a habit they've lapsed on. Deliberately NOT always-on: shown
+  every single day it becomes wallpaper and stops landing, which would
+  waste the one piece of intrinsic motivation the user gave us. This also
+  needed no new signal — `status.streak` was already computed on every card.
+
+### Verification
+- `npx tsc --noEmit` clean. Six `Trackable` test fixtures needed the new
+  field; five took an identical one-line addition, the sixth
+  (`reminders/__tests__/schedule.test.ts`) has `reminderTime: "09:00"`
+  rather than `null` so the batch edit skipped it — caught by `tsc`, not
+  by assuming the sweep was complete.
+- `npx vitest run`: **170/173** — same 3 pre-existing live-DB-drift
+  failures, no regressions. No new test cases: this phase adds no new pure
+  logic (one nullable column, one form field, one conditional render), so
+  there was nothing to TDD — stated rather than padding the suite with a
+  test that asserts a string passes through unchanged.
+- **Device pass: incomplete — the phone dropped off USB mid-check** (same
+  connection flakiness as earlier this session; a reconnect watcher is
+  armed). A `why` was set on the "Yy" habit directly in the DB to test the
+  payoff render, and that check is still outstanding. **Worth clearing that
+  value** (or just editing it in the panel) since it's test text, not the
+  user's own.
+- **Two things still need a human tap** — this device blocks synthetic
+  input (`SecurityException: INJECT_EVENTS`), so neither is reachable from
+  here: R2's own **"Why this matters" field** in the add-habit panel, and
+  Phase R's **`GoalPanel`** (target stepper, 2/4/6/8wk control, and the
+  over-ambitious-target warning). Both render paths are unexercised. Noted
+  as a real gap, not folded into "verified."
+
 ## Phase R — Long-horizon goal reframe
 
 Resumes point 1 of the roadmap (research-backed wedges), parked while

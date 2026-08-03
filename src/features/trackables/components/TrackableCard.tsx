@@ -165,6 +165,15 @@ export function TrackableCard({
             </View>
           )}
         </View>
+        {/* The pre-commitment payoff (Phase R2): surface the user's own stated
+            reason back to them exactly when momentum is gone — streak at 0 and
+            not yet done today. Deliberately NOT always-on: shown every single
+            day it would become wallpaper and stop landing. */}
+        {trackable.why && status.streak === 0 && !status.isDoneToday && (
+          <Text style={styles.whyText} numberOfLines={2}>
+            “{trackable.why}”
+          </Text>
+        )}
       </View>
       <View style={styles.checkCol}>
         <Text style={styles.payout}>+{payoutCoins(trackable)}🪙</Text>
@@ -273,6 +282,7 @@ const styles = StyleSheet.create({
   progressText: { fontSize: 10, fontWeight: "700", color: INK, fontFamily: fonts.mono700 },
   comboBadge: { borderWidth: theme.borders.hairline, borderColor: theme.color.hero, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1, backgroundColor: LIGHT_VIOLET },
   comboText: { fontSize: 10, fontWeight: "700", color: theme.color.hero, fontFamily: fonts.mono700 },
+  whyText: { fontSize: 11, fontStyle: "italic", color: theme.color.hero, fontFamily: fonts.display600, marginTop: 5 },
   checkCol: { alignItems: "center", gap: 5, flexShrink: 0 },
   payout: { fontSize: 12, fontWeight: "700", color: INK, fontFamily: fonts.mono700 },
   checkBtn: {

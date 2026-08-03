@@ -14,6 +14,8 @@ export type Trackable = {
   weekdays: number[] | null;
   dueOn: string | null;
   reminderTime: string | null;
+  /** Optional one-line "why this matters to me", captured at creation and shown back when momentum is lost. */
+  why: string | null;
   archivedAt: string | null;
   createdAt: string;
 };
@@ -33,6 +35,7 @@ function mapRow(row: Record<string, unknown>): Trackable {
     weekdays: row.weekdays as number[] | null,
     dueOn: (row.due_on as string | null) ?? null,
     reminderTime: (row.reminder_time as string | null) ?? null,
+    why: (row.why as string | null) ?? null,
     archivedAt: row.archived_at as string | null,
     createdAt: row.created_at as string,
   };
@@ -68,6 +71,7 @@ export async function createTrackable(values: TrackableFormValues): Promise<Trac
       weekdays: parsed.weekdays,
       due_on: parsed.dueOn,
       reminder_time: parsed.reminderTime,
+      why: parsed.why,
     })
     .select()
     .single();
@@ -88,6 +92,7 @@ export async function updateTrackable(id: string, values: TrackableUpdateValues)
   if (parsed.quota !== undefined) patch.quota = parsed.quota;
   if (parsed.dueOn !== undefined) patch.due_on = parsed.dueOn;
   if (parsed.reminderTime !== undefined) patch.reminder_time = parsed.reminderTime;
+  if (parsed.why !== undefined) patch.why = parsed.why;
 
   const { data, error } = await supabase.from("trackables").update(patch).eq("id", id).select().single();
   if (error) throw error;

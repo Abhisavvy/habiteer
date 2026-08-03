@@ -24,6 +24,7 @@ export const trackables = pgTable("trackables", {
   weekdays: integer("weekdays").array(), // 0-6, for specific-weekday habits
   dueOn: date("due_on"), // tasks only: optional scheduled day; null = always due. Hidden until this date, then shows until done.
   reminderTime: text("reminder_time"), // optional local-notification time "HH:MM" (24h); null = no reminder. Descriptive, gates nothing.
+  why: text("why"), // optional one-line "why this matters to me", shown back when momentum is lost. Descriptive, gates nothing.
   archivedAt: timestamp("archived_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });

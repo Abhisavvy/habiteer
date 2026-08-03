@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createInsertSchema, createUpdateSchema } from "drizzle-zod";
 import { trackables } from "@/lib/db/schema";
 
-const FORM_FIELDS = ["kind", "name", "emoji", "difficulty", "coinValue", "goalType", "weekdays", "period", "quota", "dueOn", "reminderTime"] as const;
+const FORM_FIELDS = ["kind", "name", "emoji", "difficulty", "coinValue", "goalType", "weekdays", "period", "quota", "dueOn", "reminderTime", "why"] as const;
 
 const refinements = {
   kind: z.enum(["habit", "task"]),
@@ -15,6 +15,10 @@ const refinements = {
   quota: (schema: z.ZodNumber) => schema.int().positive(),
   dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), // tasks: ISO date or null (always due)
   reminderTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(), // "HH:MM" 24h or null (no reminder)
+  // One line, deliberately short — this is a pre-commitment prompt, not a journal.
+  // Empty input normalizes to null upstream (see TrackablePanel) so "skipped" and
+  // "typed then cleared" are the same stored state.
+  why: (schema: z.ZodString) => schema.trim().max(80).nullable(),
 };
 
 /** Validates the add-trackable form (`userId` is derived in api.ts, not user input). */
