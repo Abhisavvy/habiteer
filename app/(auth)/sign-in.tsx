@@ -22,12 +22,18 @@ export default function SignIn() {
   const withEmail = async (mode: "in" | "up") => {
     setBusy(true);
     try {
-      const { error } =
+      const { data, error } =
         mode === "in"
           ? await supabase.auth.signInWithPassword({ email, password })
           : await supabase.auth.signUp({ email, password });
-      if (error) Alert.alert("Sign-in failed", error.message);
-      else if (mode === "up") {
+      if (error) Alert.alert(mode === "in" ? "Sign-in failed" : "Sign-up failed", error.message);
+      // Only tell someone to check their email if a confirmation is ACTUALLY
+      // pending. When the project has email confirmation off, signUp returns a
+      // session and they are already signed in — the old unconditional message
+      // sent them off to tap a link that was never sent, which reads exactly
+      // like the sign-up having failed. onAuthStateChange handles the
+      // navigation, so the success path needs no alert at all.
+      else if (mode === "up" && !data.session) {
         Alert.alert("Check your email", "We sent a confirmation link — tap it, then sign in.");
       }
     } finally {

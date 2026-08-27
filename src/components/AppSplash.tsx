@@ -81,7 +81,24 @@ export function AppSplash({ onDone }: { onDone: () => void }) {
       Animated.spring(capScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
       Animated.delay(180),
       Animated.timing(fade, { toValue: 0, duration: 220, useNativeDriver: true }),
-    ]).start(({ finished }) => finished && onDone());
+    ]).start(() => onDone());
+
+    // The splash is an OVERLAY on the whole app, so `onDone` must fire no
+    // matter what — it's the only thing that unmounts it. This previously read
+    // `({ finished }) => finished && onDone()`, and an RN Animated sequence
+    // reports finished: false whenever it's interrupted. Launching the app and
+    // immediately backgrounding it (or, as observed on device, launching while
+    // the screen was asleep) interrupted the sequence, so onDone never fired
+    // and the app sat on the splash forever with no error and no way out but a
+    // force-quit. Calling onDone unconditionally is right: an interrupted
+    // splash animation is not a reason to withhold the app.
+    //
+    // The timer is the belt to that braces: if the callback never runs at all
+    // (the animation never starts because the app is backgrounded before the
+    // driver picks it up), this still releases the overlay. Generous enough
+    // never to clip the ~1200ms choreography on a normal launch.
+    const failsafe = setTimeout(onDone, 2500);
+    return () => clearTimeout(failsafe);
   }, [reduceMotion]);
 
   if (reduceMotion === null) return <View style={styles.root} />;

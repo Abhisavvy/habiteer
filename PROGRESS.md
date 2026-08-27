@@ -2766,3 +2766,92 @@ has a live pledge on it. Settle or give up the pledge first."
   Everything above is `tsc` + vitest + live-DB verified; nothing about how
   the pledge panel, ladder, Bank button, or header line actually *look and
   behave on the phone* has been confirmed. Outstanding, not assumed fine.
+
+### Phase P — device pass (DONE) and the backend migration it required
+
+The device pass was blocked for a long stretch by the Supabase free-tier
+project auto-pausing. The old project (`xhyzxxtjpdmdbixahmiq`) turned out to be
+unrecoverable — no dashboard access — so the whole backend was rebuilt on a new
+project (`fftceejuiwnkkqzolmbi`, ap-southeast-2). Data from the old project is
+gone; no code or schema was lost, since all of it lives in the repo.
+
+Rebuild, all verified: `db:push` (13 tables) → `db:gen-sql` → `db:apply-sql`
+(constants → RLS → RPCs). RLS **ON for all 13 tables**, **15 policies**
+identical in shape to the old project, every money-carrying table SELECT-only,
+12 RPCs present including all four pledge functions, and the
+`on_auth_user_created` trigger intact.
+
+**Full suite: 210/210, 18 files, zero failures.** The three failures this
+session kept attributing to "live-account drift" disappeared on a fresh
+account — which is the proof they were never bugs.
+
+#### The pledge, verified end to end on a real device
+Setup was seeded server-side (a habit, completion history, coins) but **both
+RPCs were called by real taps in the app**, never simulated — the same "seed as
+admin, act as the user" split the suite uses.
+
+- **GoalPanel**: target 12 / 4wk / stake 30 → ladder rendered `3× → +7`,
+  `6× → +7`, `9× → +7`, `12× — all of it → +9`, bonus `+15`. Payouts sum to
+  exactly 30: conservation holds on a non-divisible stake, on device.
+- **Stake** (`fn_create_pledge`): balance 120 → 90, ledger `-30 pledge` with
+  `ref_id` set, goal `active`, `banked=0`.
+- **Bank** (`fn_bank_goal_checkpoint`), arranged so TWO checkpoints were earned
+  at once — deliberately the cumulative path, not the easy single-checkpoint
+  one: exactly one `+14 pledge_return` (not two of 7, not a double-pay),
+  `banked=2/4`, balance 104, state still `active`, and **no title grant**
+  (correct — the title is only granted on completion).
+- **UI after banking**: dots 3 and 6 jade-filled, `6/12 · on pace · 🪙 16 at
+  risk` (= `30 − total(2)`), "Next payout at 9×".
+- **Today**: coin HUD updated to 104 (the `["coinBalance"]` invalidation the
+  plan flagged as a stale-HUD risk), header line "Ember is holding 🪙 16 on
+  your pledge", and the card chip `🤝 6/12` in gold rather than jade — correct,
+  since nothing is bankable once earned equals banked.
+
+#### Three real defects found by this pass, all fixed
+1. **`AppSplash` stranded the app permanently.** `.start(({ finished }) =>
+   finished && onDone())` — an RN Animated sequence reports `finished: false`
+   when interrupted, and `onDone` is the only thing that unmounts the splash
+   OVERLAY. Launching and immediately backgrounding (or launching while the
+   screen slept, which is how it was found) froze the app on the splash with no
+   error and no exit but a force-quit. Now calls `onDone` unconditionally plus a
+   2.5s failsafe. **Device-verified.**
+2. **`useAuth.init()` had no `.catch()`.** `ready` gates
+   `SplashScreen.hideAsync()`, so a rejecting `getSession()` strands the native
+   splash the same way. Latent rather than the observed cause — the logs showed
+   supabase-js resolving-with-error rather than rejecting — but correct to fix.
+3. **`sign-in.tsx` lied after every signup.** It showed "Check your email — tap
+   it, then sign in" unconditionally, without checking `data.session`. With
+   email confirmation off, signUp returns a session and you're already in, so
+   the message sent people to click a link that was never sent — indistinguish-
+   able from the signup having failed. Now only shown when a confirmation is
+   genuinely pending.
+
+#### Test-infrastructure changes
+- `makeOtherUser` now confirms buddy accounts through the admin `pg` connection
+  after signUp. A project with "Confirm email" ON returns no session, which
+  broke every buddy-account test. Fixed in the helper rather than by disabling
+  confirmation project-wide, since that would let anyone sign up with someone
+  else's address in the real app.
+- `testTimeout` 20000 → 40000. ap-southeast-2 roughly doubled per-round-trip
+  latency vs ap-northeast-2, and `fundCoins` earns coins for real in a loop.
+
+#### Operational gotchas worth remembering (both now in memory)
+- **A paused Supabase project looks exactly like an app bug.** The API
+  subdomain's DNS record is withdrawn (authoritative NXDOMAIN) and the pooler
+  answers `tenant/user postgres.<ref> not found`. One `dig` settles it before
+  reading any app code.
+- **Changing `EXPO_PUBLIC_*` does not reach the app through Metro.**
+  `client.ts` reads `Constants.expoConfig.extra`, baked into the native app at
+  build time. The JS bundle contained the new URL while the running app still
+  called the dead project; the only symptom was "Network request failed". Needs
+  `expo run:android`. A one-line change to read `process.env.EXPO_PUBLIC_*`
+  directly would make a Metro restart sufficient — not done, flagged.
+- `ANDROID_HOME` is unset in non-interactive shells and the SDK is Homebrew's at
+  `/opt/homebrew/share/android-commandlinetools`, not the Expo default path.
+  `android/local.properties` now pins `sdk.dir` (machine-specific — consider
+  gitignoring).
+
+#### Small UX nit, not fixed
+A brand-new pledge reads "behind pace" on day one, because expected progress
+after 1 of 28 days is 0.43 and 0 < 0.43. Technically correct, needlessly
+discouraging on the very screen meant to build commitment.

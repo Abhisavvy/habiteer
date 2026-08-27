@@ -184,6 +184,15 @@ export async function makeOtherUser() {
     // First time this slot is ever used: create it, then sign in.
     const signUp = await client.auth.signUp({ email, password: OTHER_USER_PASSWORD });
     if (signUp.error) throw signUp.error;
+    // A project with "Confirm email" ON returns no session from signUp, so the
+    // sign-in below would fail and take every buddy-account test with it. We own
+    // the database, so confirm it here rather than depending on the project's
+    // auth settings: turning confirmation OFF project-wide would let anyone sign
+    // up with someone else's address in the real app, which is far too high a
+    // price for green tests.
+    await admin((c) =>
+      c.query(`update auth.users set email_confirmed_at = coalesce(email_confirmed_at, now()) where email = $1`, [email])
+    );
     signIn = await client.auth.signInWithPassword({ email, password: OTHER_USER_PASSWORD });
     if (signIn.error) throw signIn.error;
   }
