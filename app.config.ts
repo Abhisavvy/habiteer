@@ -235,9 +235,5 @@ const config: ExpoConfig = {
     // type only declares string/tuple entries, so this needs a cast.
     withWidgetAssets as unknown as string,
   ],
-  extra: {
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-  },
 };
 export default config;

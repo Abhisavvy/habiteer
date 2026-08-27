@@ -2855,3 +2855,20 @@ admin, act as the user" split the suite uses.
 A brand-new pledge reads "behind pace" on day one, because expected progress
 after 1 of 28 days is 0.43 and 0 < 0.43. Technically correct, needlessly
 discouraging on the very screen meant to build commitment.
+
+### Two follow-ups from the device pass (done)
+
+**`client.ts` reads the env vars directly** instead of
+`Constants.expoConfig?.extra`, and throws at startup if they are missing rather
+than letting it surface as an opaque network error on the first request. Metro
+inlines `EXPO_PUBLIC_*` into the bundle, so repointing the app at a different
+Supabase project is now a Metro restart rather than a full `expo run:android`.
+The dead `extra` block is gone from `app.config.ts` — `client.ts` was its only
+reader, and leaving dead config invites someone to fix the wrong place.
+Device-verified: the app came back up on live data with no startup error.
+
+**`onPace` floors the expectation.** `progress` is a whole count while
+`expectedProgress` is fractional, so a strict comparison labelled a pledge
+"behind pace" the instant it was created — day 1 of 28 at target 12 expects
+0.43. You are behind only once a whole completion has slipped. Two tests, both
+red first. `expectedProgress` stays exact for any caller wanting the real value.

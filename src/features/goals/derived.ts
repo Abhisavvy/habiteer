@@ -121,7 +121,16 @@ export function goalStatus(goal: Goal, completions: Completion[], today: ISODate
   else if (today > goal.endsOn) state = "missed";
   else state = "active";
 
-  return { goal, progress, daysElapsed, daysTotal, expectedProgress, onPace: progress >= expectedProgress, state };
+  // Floor the expectation before comparing. `expectedProgress` is fractional
+  // but `progress` is a whole count, so a strict comparison called a pledge
+  // "behind pace" from the moment it was created — day 1 of 28 at target 12
+  // expects 0.43, and nobody has done 0.43 of anything. You are behind only
+  // once a WHOLE completion has slipped, which is also the only version a
+  // player can act on. `expectedProgress` itself stays exact for any caller
+  // that wants the real number.
+  const onPace = progress >= Math.floor(expectedProgress);
+
+  return { goal, progress, daysElapsed, daysTotal, expectedProgress, onPace, state };
 }
 
 /**

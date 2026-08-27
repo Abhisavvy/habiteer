@@ -80,6 +80,26 @@ describe("goalStatus", () => {
     expect(s.state).toBe("missed");
   });
 
+  it("is on pace on day one, before a single completion is even due", () => {
+    // target 12 over 28 days means expected progress after day 1 is 0.43, and
+    // a strict `progress >= expected` made a brand-new pledge read "behind
+    // pace" the moment it was created. You cannot be behind by a fraction of a
+    // completion — progress is whole numbers.
+    const g = goal({ targetCount: 12, startsOn: "2026-01-01", endsOn: "2026-01-28" });
+    const s = goalStatus(g, [], "2026-01-01");
+    expect(s.state).toBe("active");
+    expect(s.onPace).toBe(true);
+  });
+
+  it("is behind pace only once a whole completion has been missed", () => {
+    // Day 8 of 28 at target 12 -> expected 3.43. At 3 done you are within the
+    // same completion, so still on pace; at 2 you have genuinely dropped one.
+    const g = goal({ targetCount: 12, startsOn: "2026-01-01", endsOn: "2026-01-28" });
+    const three = Array.from({ length: 3 }, (_, i) => completion({ completedOn: `2026-01-0${i + 1}` }));
+    expect(goalStatus(g, three, "2026-01-08").onPace).toBe(true);
+    expect(goalStatus(g, three.slice(0, 2), "2026-01-08").onPace).toBe(false);
+  });
+
   it("is still active (not missed) exactly on endsOn — the window end is inclusive", () => {
     const g = goal({ targetCount: 10, startsOn: "2026-01-01", endsOn: "2026-01-14" });
     const completions = Array.from({ length: 4 }, (_, i) => completion({ completedOn: `2026-01-0${i + 1}` }));
