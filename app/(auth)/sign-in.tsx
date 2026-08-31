@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, Image, StyleSheet, Alert, ActivityIndicator } from "react-native";
 import { Eye, EyeOff } from "lucide-react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as QueryParams from "expo-auth-session/build/QueryParams";
+import { fetchEnabledProviders, isProviderEnabled } from "@/features/auth/providers";
 import { supabase } from "@/lib/supabase/client";
 import { HardShadow } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
@@ -18,6 +19,20 @@ export default function SignIn() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Whether this project actually has Google configured. Starts true so the
+  // button never flickers in on a normal launch; only an explicit `false` from
+  // the project hides it. See features/auth/providers.ts for why it fails open.
+  const [googleEnabled, setGoogleEnabled] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEnabledProviders().then((settings) => {
+      if (!cancelled) setGoogleEnabled(isProviderEnabled(settings, "google"));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const withEmail = async (mode: "in" | "up") => {
     setBusy(true);
@@ -47,7 +62,11 @@ export default function SignIn() {
       options: { redirectTo: GOOGLE_REDIRECT_TO, skipBrowserRedirect: true },
     });
     if (error) return Alert.alert("Google sign-in failed", error.message);
-    if (!data?.url) return;
+    // Previously a silent return: the tap did nothing at all and gave no reason,
+    // which is indistinguishable from the button being dead.
+    if (!data?.url) {
+      return Alert.alert("Google sign-in failed", "Couldn't start Google sign-in. Try email instead.");
+    }
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, GOOGLE_REDIRECT_TO);
     if (result.type !== "success" || !result.url) return;
@@ -115,18 +134,25 @@ export default function SignIn() {
           <Text style={styles.createText}>Create account</Text>
         </HardShadow>
 
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.dividerLine} />
-        </View>
+        {/* Hidden entirely when the project has no Google provider — a button
+            that is guaranteed to error is worse than no button. The divider goes
+            with it, or an orphan "or" is left dangling under Create account. */}
+        {googleEnabled && (
+          <>
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
 
-        <HardShadow style={styles.googleBtn} onPress={withGoogle}>
-          <View style={styles.googleBadge}>
-            <Text style={styles.googleG}>G</Text>
-          </View>
-          <Text style={styles.googleText}>Continue with Google</Text>
-        </HardShadow>
+            <HardShadow style={styles.googleBtn} disabled={busy} onPress={withGoogle}>
+              <View style={styles.googleBadge}>
+                <Text style={styles.googleG}>G</Text>
+              </View>
+              <Text style={styles.googleText}>Continue with Google</Text>
+            </HardShadow>
+          </>
+        )}
       </View>
     </View>
   );

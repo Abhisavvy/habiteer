@@ -2872,3 +2872,50 @@ Device-verified: the app came back up on live data with no startup error.
 "behind pace" the instant it was created — day 1 of 28 at target 12 expects
 0.43. You are behind only once a whole completion has slipped. Two tests, both
 red first. `expectedProgress` stays exact for any caller wanting the real value.
+
+### Google sign-in: enabled, and the button now tracks the project (done)
+
+The rebuilt project had no auth providers configured, so "Continue with Google"
+was guaranteed to fail — the app showed it unconditionally. Confirmed from
+`/auth/v1/settings` rather than assumed (`"google": false`).
+
+Enabling the provider itself was dashboard work (Google Cloud OAuth client +
+Supabase provider config + `habiteer://` on Supabase's redirect allow-list).
+It's now live and **verified end to end on device**: a real Google sign-in
+produced an `auth.users` row with `provider=google`, which exercises both
+redirect hops — Google → Supabase callback, then Supabase → the app's deep link.
+
+The code fix is that the app no longer asserts what the backend supports. It
+probes `/auth/v1/settings` on the sign-in screen and hides the Google button
+when the provider isn't enabled, so enabling it in the dashboard brings the
+button back with no release. Three deliberate details:
+
+- **The gate fails open** (`isProviderEnabled` returns true for any unreadable
+  payload, and the fetch swallows errors to `null`). It only ever HIDES a
+  button, so hiding working sign-in would be the worse failure; only an explicit
+  `false` hides anything. Tested, including the fail-open cases.
+- **The divider is hidden with the button**, or an orphan "or" dangles under
+  Create account.
+- **`providers.ts` deliberately does not import the supabase client.** It is
+  unit-tested, and pulling the client in drags SecureStore and the URL polyfill
+  into a node test environment — the same trap `emberSvg` hit earlier.
+
+Also removed a silent dead-end in `withGoogle`: `if (!data?.url) return;` meant
+the tap did nothing and said nothing, indistinguishable from a dead button.
+
+**`EXPO_PUBLIC_GOOGLE_CLIENT_ID` is read by nothing** and is vestigial — the
+OAuth flow goes through `supabase.auth.signInWithOAuth`, so Supabase holds the
+Google credentials server-side and the client id never needs to reach the app.
+Left in `.env` rather than removed, but it should not be trusted as the source
+of truth for which OAuth client is in use.
+
+### Shareable build
+`cd android && ./gradlew assembleRelease` produces an installable APK with no
+keystore setup, because `android/app/build.gradle` already signs `release` with
+the debug keystore. Verified the output actually is self-contained
+(`assets/index.android.bundle` present) and points at the current project.
+Two caveats that matter: debug-signed APKs cannot go to Play, and apps signed
+with different keys cannot upgrade each other, so early testers will have to
+uninstall before moving to a properly signed build. Building with
+`-PreactNativeArchitectures=arm64-v8a` cuts ~75MB to roughly a third by dropping
+the unused ABIs.
