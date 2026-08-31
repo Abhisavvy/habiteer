@@ -12,6 +12,7 @@ import { overallProgress } from "@/features/completions/derived";
 import { useMyGroupsQuery, useCreateGroup, useJoinGroup } from "@/features/groups/useGroups";
 import { GroupCard } from "@/features/groups/components/GroupCard";
 import { CreateOrJoinPanel } from "@/features/groups/components/CreateOrJoinPanel";
+import { Modal } from "@/components/Modal";
 
 export default function Groups() {
   const { data: completions } = useCompletionsQuery();
@@ -85,28 +86,31 @@ export default function Groups() {
           <Text style={styles.createPlus}>+</Text>
           <Text style={styles.createText}>Create a group</Text>
         </Pressable>
-
-        {panelOpen && (
-          <CreateOrJoinPanel
-            level={level}
-            creating={createMutation.isPending}
-            joining={joinMutation.isPending}
-            onCancel={() => setPanelOpen(false)}
-            onCreate={(values) => {
-              createMutation.mutate(values, {
-                onSuccess: () => setPanelOpen(false),
-                onError: (e) => Alert.alert("Couldn't create that group", e.message),
-              });
-            }}
-            onJoin={(code) => {
-              joinMutation.mutate(code, {
-                onSuccess: () => setPanelOpen(false),
-                onError: (e) => Alert.alert("Couldn't join that group", e.message),
-              });
-            }}
-          />
-        )}
       </ScrollView>
+
+      {panelOpen && (
+        <Modal visible onRequestClose={() => setPanelOpen(false)} variant="sheet">
+            <CreateOrJoinPanel
+              level={level}
+              creating={createMutation.isPending}
+              joining={joinMutation.isPending}
+              onCancel={() => setPanelOpen(false)}
+              onCreate={(values) => {
+                createMutation.mutate(values, {
+                  onSuccess: () => setPanelOpen(false),
+                  onError: (e) => Alert.alert("Couldn't create that group", e.message),
+                });
+              }}
+              onJoin={(code) => {
+                joinMutation.mutate(code, {
+                  onSuccess: () => setPanelOpen(false),
+                  onError: (e) => Alert.alert("Couldn't join that group", e.message),
+                });
+              }}
+            />
+        </Modal>
+      )}
+
     </View>
   );
 }

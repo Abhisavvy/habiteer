@@ -112,19 +112,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   closeBtnText: { fontWeight: "700", fontSize: 16, color: theme.color.ink, fontFamily: fonts.display700 },
-  panel: {
-    backgroundColor: theme.color.card,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: theme.radius,
-    padding: 15,
-    gap: 15,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 5, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 5,
-  },
+  // Padding and gap only. The border, background and shadow live on the modal
+  // sheet that wraps this form (components/Modal.tsx), so that the header row
+  // and the Cancel/Save row — both siblings of this box, not children — sit
+  // inside the same card rather than floating outside it.
+  panel: { gap: 15 },
   row: { gap: 7 },
   label: {
     fontSize: 10,

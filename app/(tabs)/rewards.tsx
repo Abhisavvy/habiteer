@@ -17,6 +17,7 @@ import {
 } from "@/features/rewards/useRewards";
 import { RewardCard } from "@/features/rewards/components/RewardCard";
 import { RewardPanel } from "@/features/rewards/components/RewardPanel";
+import { Modal } from "@/components/Modal";
 import { RedeemSuccessOverlay } from "@/features/rewards/components/RedeemSuccessOverlay";
 import { RedeemConfirmModal } from "@/features/rewards/components/RedeemConfirmModal";
 import { InsufficientFundsModal } from "@/features/rewards/components/InsufficientFundsModal";
@@ -85,39 +86,44 @@ export default function Rewards() {
             <Text style={styles.addRewardText}>Add reward</Text>
           </Pressable>
         )}
-
-        {panel?.mode === "add" && (
-          <RewardPanel
-            mode="add"
-            submitting={createMutation.isPending}
-            onCancel={() => setPanel(null)}
-            onSubmit={(values) => {
-              createMutation.mutate(values, {
-                onSuccess: () => setPanel(null),
-                onError: (e) => Alert.alert("Couldn't add that", e.message),
-              });
-            }}
-          />
-        )}
-        {panel?.mode === "edit" && (
-          <RewardPanel
-            mode="edit"
-            initial={panel.reward}
-            submitting={updateMutation.isPending}
-            onCancel={() => setPanel(null)}
-            onSubmit={(values) => {
-              updateMutation.mutate(
-                { id: panel.reward.id, values },
-                {
-                  onSuccess: () => setPanel(null),
-                  onError: (e) => Alert.alert("Couldn't save that", e.message),
-                }
-              );
-            }}
-          />
-        )}
-
       </ScrollView>
+
+      {panel?.mode === "add" && (
+        <Modal visible onRequestClose={() => setPanel(null)} variant="sheet">
+            <RewardPanel
+              mode="add"
+              submitting={createMutation.isPending}
+              onCancel={() => setPanel(null)}
+              onSubmit={(values) => {
+                createMutation.mutate(values, {
+                  onSuccess: () => setPanel(null),
+                  onError: (e) => Alert.alert("Couldn't add that", e.message),
+                });
+              }}
+            />
+        </Modal>
+      )}
+
+      {panel?.mode === "edit" && (
+        <Modal visible onRequestClose={() => setPanel(null)} variant="sheet">
+            <RewardPanel
+              mode="edit"
+              initial={panel.reward}
+              submitting={updateMutation.isPending}
+              onCancel={() => setPanel(null)}
+              onSubmit={(values) => {
+                updateMutation.mutate(
+                  { id: panel.reward.id, values },
+                  {
+                    onSuccess: () => setPanel(null),
+                    onError: (e) => Alert.alert("Couldn't save that", e.message),
+                  }
+                );
+              }}
+            />
+        </Modal>
+      )}
+
 
       {redeemed && (
         <RedeemSuccessOverlay name={redeemed.name} cost={redeemed.cost} onClose={() => setRedeemed(null)} />

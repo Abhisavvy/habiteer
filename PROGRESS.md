@@ -2975,3 +2975,57 @@ Verified: tsc clean, 144/144 pure-logic suites, renders correctly on device.
 NOT verified on device: the pull gesture and the give-up modal — MIUI blocks
 synthetic input, so a pull cannot be triggered from this session, and the
 signed-in account (the Google one from the OAuth test) has no pledge to give up.
+
+### Add/edit forms open as modal sheets (done)
+
+Reported: "when there are a lot of existing items the screen looks off when
+adding another habit." The cause was structural and affected **all three**
+forms, not just habits — `TrackablePanel`, `RewardPanel` and
+`CreateOrJoinPanel` were each rendered as an inline block INSIDE their screen's
+own ScrollView, so the more content sat above them, the further off-screen the
+form opened. With six habits the add form mounted below the fold entirely.
+
+`Modal.tsx` gained a `variant="sheet"`: scrim, centring, `maxHeight: 88%` and
+internal scrolling. Each form moved out of its ScrollView to a sibling position,
+alongside where the confirm modals already lived. No form's fields, validation
+or submit logic changed.
+
+**Two of my own calls were wrong and got corrected on device:**
+
+1. I first had the sheet contribute no card chrome, reasoning that each panel
+   already draws its own bordered card and nesting them would double every
+   border. On device the Cancel / Save row was left floating on the scrim
+   OUTSIDE the card — because each form's header row and action row are
+   *siblings* of its inner box, not children, so no arrangement where the panel
+   keeps its own card can contain them. The chrome now lives on the sheet and
+   each panel's inner box keeps only padding and gap. One card around the whole
+   form is the only arrangement where every part belongs to it.
+2. I put `onStartShouldSetResponder={() => true}` on the sheet wrapper to stop
+   taps reaching the scrim. A View claiming the responder on touch-start
+   swallows drags before the ScrollView sees them, so scrolling felt broken —
+   reported as "the scrolling on the modal is poor". It was also unnecessary:
+   the sheet renders after the scrim's Pressable and sits on top of it. Removed,
+   and the scroll indicator is now VISIBLE, since with a height-capped card
+   nothing else tells you there is more form below the fold.
+
+Device-verified: form opens centred over a six-habit list with the scrim behind,
+and the action row is inside the card. NOT verified by me: the scroll drag feel
+and whether the segmented controls still register taps rather than scrolls —
+both need gestures MIUI will not let this session inject.
+
+### "The app never opens" — root cause was the dev build, not the app
+
+It failed repeatedly all session, and the cause was never app code: a dev build
+fetches its JS over the network on every launch, so it breaks when ANY of three
+things move — the `adb reverse` tunnel (dropped four separate times), the Mac's
+LAN IP (changed mid-session, 192.168.2.71 -> 192.168.5.120, while the app still
+held the old address), or the Metro process (died twice). Re-establishing the
+tunnel each time was treating the symptom.
+
+Fixed by installing the release APK, which has the bundle inside it. Proved
+standalone: Metro killed (0 listeners on 8081) and the tunnel removed, then a
+cold launch reached a signed-in Today screen with all six habits in ~14s, zero
+fatals. `adb install -r` preserved app data, so the session survived.
+
+Note for future device work: the phone now runs a release build, so Fast Refresh
+is gone. `npx expo run:android` swaps back to the dev build when needed.

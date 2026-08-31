@@ -23,6 +23,7 @@ import { useFloatingXp, FloatingXpOverlay } from "@/features/completions/compone
 import { LevelUpOverlay } from "@/features/completions/components/LevelUpOverlay";
 import { UndoToast } from "@/features/completions/components/UndoToast";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
+import { Modal } from "@/components/Modal";
 import { HardShadow } from "@/components/HardShadow";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { StaggerItem } from "@/components/StaggerItem";
@@ -276,40 +277,46 @@ export default function Home() {
           })}
         </View>
 
-        {panel?.mode === "add" && (
-          <TrackablePanel
-            mode="add"
-            level={progress.level}
-            submitting={createMutation.isPending}
-            onCancel={() => setPanel(null)}
-            onSubmit={(values) => {
-              createMutation.mutate(values, {
-                onSuccess: () => setPanel(null),
-                onError: (e) => Alert.alert("Couldn't add that", e.message),
-              });
-            }}
-          />
-        )}
-        {panel?.mode === "edit" && (
-          <TrackablePanel
-            mode="edit"
-            initial={panel.trackable}
-            level={progress.level}
-            submitting={updateMutation.isPending}
-            onCancel={() => setPanel(null)}
-            onSubmit={(values) => {
-              updateMutation.mutate(
-                { id: panel.trackable.id, values },
-                {
-                  onSuccess: () => setPanel(null),
-                  onError: (e) => Alert.alert("Couldn't save that", e.message),
-                }
-              );
-            }}
-          />
-        )}
-
       </ScrollView>
+
+      {panel?.mode === "add" && (
+        <Modal visible onRequestClose={() => setPanel(null)} variant="sheet">
+            <TrackablePanel
+              mode="add"
+              level={progress.level}
+              submitting={createMutation.isPending}
+              onCancel={() => setPanel(null)}
+              onSubmit={(values) => {
+                createMutation.mutate(values, {
+                  onSuccess: () => setPanel(null),
+                  onError: (e) => Alert.alert("Couldn't add that", e.message),
+                });
+              }}
+            />
+        </Modal>
+      )}
+
+      {panel?.mode === "edit" && (
+        <Modal visible onRequestClose={() => setPanel(null)} variant="sheet">
+            <TrackablePanel
+              mode="edit"
+              initial={panel.trackable}
+              level={progress.level}
+              submitting={updateMutation.isPending}
+              onCancel={() => setPanel(null)}
+              onSubmit={(values) => {
+                updateMutation.mutate(
+                  { id: panel.trackable.id, values },
+                  {
+                    onSuccess: () => setPanel(null),
+                    onError: (e) => Alert.alert("Couldn't save that", e.message),
+                  }
+                );
+              }}
+            />
+        </Modal>
+      )}
+
 
       <FloatingXpOverlay floats={floats} onDone={remove} />
       {levelUp !== null && (

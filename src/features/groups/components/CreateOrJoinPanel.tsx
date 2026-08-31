@@ -101,19 +101,11 @@ export function CreateOrJoinPanel({
 }
 
 const styles = StyleSheet.create({
-  panel: {
-    backgroundColor: theme.color.card,
-    borderWidth: theme.border,
-    borderColor: theme.color.ink,
-    borderRadius: theme.radius,
-    padding: 16,
-    gap: 12,
-    shadowColor: theme.color.ink,
-    shadowOffset: { width: 5, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 5,
-  },
+  // Padding and gap only. The border, background and shadow live on the modal
+  // sheet that wraps this form (components/Modal.tsx), so that the header row
+  // and the Cancel/Save row — both siblings of this box, not children — sit
+  // inside the same card rather than floating outside it.
+  panel: { gap: 12 },
   segmented: {
     flexDirection: "row",
     backgroundColor: theme.color.paper,

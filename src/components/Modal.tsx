@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { View, Text, Pressable, Animated, StyleSheet } from "react-native";
+import { View, Text, Pressable, Animated, StyleSheet, ScrollView } from "react-native";
 import { HardShadow, type HapticKind } from "@/components/HardShadow";
 import { theme } from "@/constants/theme";
 import { fonts } from "@/constants/fonts";
@@ -37,10 +37,23 @@ export function Modal({
   visible,
   onRequestClose,
   children,
+  variant = "dialog",
 }: {
   visible: boolean;
   onRequestClose: () => void;
   children: ReactNode;
+  /**
+   * `dialog` (default) is the small centred confirmation card every existing
+   * modal uses. `sheet` is for the add/edit FORMS: wider, height-capped, and it
+   * scrolls internally so a long form can't overflow the screen.
+   *
+   * The forms used to be inline blocks inside their screen's own ScrollView, so
+   * they opened *below* the existing content — the more habits or rewards you
+   * had, the further off-screen the form appeared. Routing them through the same
+   * shell as everything else fixes that and means one scrim and one
+   * enter/exit animation for the whole app rather than two implementations.
+   */
+  variant?: "dialog" | "sheet";
 }) {
   const reduceMotion = getReduceMotionCached();
   const scrimAnim = useRef(new Animated.Value(0)).current;
@@ -101,9 +114,39 @@ export function Modal({
             transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
           }}
         >
-          <HardShadow style={styles.card} onPress={(e) => e.stopPropagation()} haptic="none">
-            {children}
-          </HardShadow>
+          {variant === "sheet" ? (
+            // The sheet IS the card. Each form's own inner box keeps only its
+            // padding and gap (see each panel's `panel` style) — its border,
+            // background and shadow moved here, because a form's header row and
+            // its Cancel/Save row sit OUTSIDE that inner box. Inline on the
+            // paper background that read fine; over a scrim it left the primary
+            // action floating outside the card. One card around the whole form
+            // is the only arrangement where every part belongs to it.
+            //
+            // `bounces={false}` so a short form doesn't rubber-band, which reads
+            // as the card being loose.
+            <View style={styles.sheet}>
+              {/* No onStartShouldSetResponder here. A View claiming the
+                  responder on touch-start swallows drags before the ScrollView
+                  sees them, which made scrolling feel unreliable. It also isn't
+                  needed: this renders after the scrim's Pressable and sits on
+                  top of it, so taps on the form never reach the scrim.
+                  The scroll indicator stays VISIBLE — with a height-capped card
+                  there is otherwise nothing telling you there is more form
+                  below the fold. */}
+              <ScrollView
+                contentContainerStyle={styles.sheetContent}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+              >
+                {children}
+              </ScrollView>
+            </View>
+          ) : (
+            <HardShadow style={styles.card} onPress={(e) => e.stopPropagation()} haptic="none">
+              {children}
+            </HardShadow>
+          )}
         </Animated.View>
       </View>
     </ModalExitContext.Provider>
@@ -220,6 +263,23 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 5,
   },
+  /** `maxHeight` is what stops a tall form running off the top and bottom of
+   *  the screen; the shadow needs a little room, hence the padding. */
+  sheet: {
+    width: "100%",
+    maxWidth: 460,
+    maxHeight: "88%",
+    backgroundColor: theme.color.surface,
+    borderWidth: theme.border,
+    borderColor: theme.color.ink,
+    borderRadius: 16,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 5, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 5,
+  },
+  sheetContent: { padding: 18, gap: 14 },
   bareIcon: { fontSize: 40 },
   iconBadge: {
     width: 52,
