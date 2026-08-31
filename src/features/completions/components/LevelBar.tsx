@@ -32,7 +32,11 @@ export function LevelBar({ level, intoLevel, need }: { level: number; intoLevel:
       <View style={styles.row}>
         <Text style={styles.level}>LVL {level}</Text>
         <Text style={styles.xp}>
-          <AnimatedNumber value={intoLevel} /> / {need.toLocaleString()} XP
+          {/* "N to LVL X" rather than "intoLevel / need XP". The bare pair never
+            said what the second number was, so 20 / 246 read as a score out of
+            246 instead of progress toward the next level — and the interesting
+            quantity is how much is LEFT, which is what the bar is about. */}
+        <AnimatedNumber value={Math.max(0, need - intoLevel)} /> XP to LVL {level + 1}
         </Text>
       </View>
       <View style={styles.track}>

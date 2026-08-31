@@ -2919,3 +2919,59 @@ with different keys cannot upgrade each other, so early testers will have to
 uninstall before moving to a properly signed build. Building with
 `-PreactNativeArchitectures=arm64-v8a` cuts ~75MB to roughly a third by dropping
 the unused ABIs.
+
+### Splash animation rework + UX P0/P1 (done)
+
+**Splash.** The native pre-JS splash drew the finished icon at 200px while
+`AppSplash` mounted at the icon's own ~155px geometry with its legs and cap at
+scale 0 — so the handoff read as the icon shrinking and breaking apart before
+rebuilding itself. The native splash is now the violet ground only, via a 64x64
+fully transparent PNG (`assets/splash-blank.png`).
+
+Omitting `image` is NOT a supported configuration: the plugin still writes
+`windowSplashScreenAnimatedIcon` into styles.xml while generating no drawable,
+so the build fails on a dangling resource. Confirmed after a `--clean` prebuild,
+so it is plugin behaviour rather than stale state — hence the transparent image
+rather than no image.
+
+Choreography rebuilt for a more deliberate feel. The badge now *arrives*
+(scale 0.82 → 1 with spring overshoot + fade) — previously it simply existed
+from frame one, hard ink border and all, which was the least polished moment.
+Then legs rise on springs (tightly staggered, overshoot rather than gliding to a
+dead stop), the crossbar reaches across, and the cap — the "level up" in the
+icon — lands last with the bounciest spring plus a 6px drop, so the eye is on it
+as the mark completes. Exit scales the mark slightly toward the viewer while
+fading, which reads as handing off rather than being switched off. The beats
+deliberately overlap via delays inside parallel branches, which is most of the
+difference between designed motion and a queue of tweens.
+
+Device-verified only that it completes and does not strand: `adb` screenshot
+round-trips are slower than a 1250ms animation, so the individual beats are NOT
+frame-verified and want a human eye on a cold start.
+
+**UX P0 — hygiene**
+- **Giving up on a pledge now confirms**, via a new `AbandonPledgeModal`. It
+  previously went straight to the RPC, so one mis-tap permanently forfeited part
+  of a real stake — while *archiving a habit*, which costs nothing by
+  comparison, already had a confirm. The copy names both halves with real
+  numbers ("you'll get back the 🪙 14 you've earned, the remaining 🪙 16 is
+  forfeited") because the fairness rule is the whole point and is genuinely
+  reassuring; a generic "are you sure?" would hide the one fact that makes the
+  decision informed.
+- **Pull-to-refresh on Today and Stats.** There was no `RefreshControl` anywhere
+  in the codebase, so the only refresh path was backgrounding the app. Pledge
+  progress in particular changes from another screen, so a stale Stats screen was
+  the normal case.
+
+**UX P1 — label ambiguity**
+- Stats' lifetime figure is now "Earned all-time" rather than "Coins earned":
+  it and the header balance were both a bare 🪙 with no way to tell which was
+  which (104 vs 120 during the device pass).
+- `LevelBar` reads "100 XP to LVL 2" instead of "0 / 100 XP". The bare pair never
+  said what the second number was, so it scanned as a score out of 100, and the
+  quantity people actually want is how much is left.
+
+Verified: tsc clean, 144/144 pure-logic suites, renders correctly on device.
+NOT verified on device: the pull gesture and the give-up modal — MIUI blocks
+synthetic input, so a pull cannot be triggered from this session, and the
+signed-in account (the Google one from the OAuth test) has no pledge to give up.

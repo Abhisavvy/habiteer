@@ -114,12 +114,29 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
-        // Native pre-JS splash — shown for the instant before the custom
-        // AppSplash (app/_layout.tsx) mounts and takes over the animation.
-        // No plugin was configured before, so this screen was showing
-        // Expo's generic default rather than the app icon.
-        image: "./assets/icon.png",
-        imageWidth: 200,
+        // Native pre-JS splash: the VIOLET GROUND ONLY, deliberately no image.
+        //
+        // It used to draw the full icon at 200px. AppSplash then mounted at the
+        // icon's own ~155px geometry with its legs and cap at scale 0, so the
+        // handoff read as the icon shrinking and breaking apart before
+        // rebuilding itself — a rendering bug, not an intro. Handing off from a
+        // flat violet field to AppSplash's identical violet field is seamless,
+        // and it lets the animation actually build the icon from nothing, which
+        // is what the design describes.
+        //
+        // The cost, stated: a cold start shows unbranded violet for the moment
+        // before JS boots. Short in a release build (the bundle is local), and
+        // a plain ground is far better than a visible disassembly.
+        //
+        // The image is a 64x64 FULLY TRANSPARENT png, not the icon and not
+        // omitted. Omitting `image` is not actually supported: the plugin still
+        // writes `windowSplashScreenAnimatedIcon` into styles.xml while
+        // generating no drawable, so the build fails on a dangling resource —
+        // confirmed after a --clean prebuild, so it is plugin behaviour rather
+        // than stale state. A transparent image satisfies the reference and
+        // renders nothing.
+        image: "./assets/splash-blank.png",
+        imageWidth: 64,
         resizeMode: "contain",
         backgroundColor: "#7B5CFF",
       },

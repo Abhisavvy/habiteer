@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { useCallback, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, RefreshControl } from "react-native";
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { HardShadow } from "@/components/HardShadow";
@@ -18,22 +18,26 @@ import {
   useSettleGoal,
   useAbandonPledge,
 } from "@/features/goals/useGoals";
-import { goalStatus } from "@/features/goals/derived";
+import { goalStatus, pledgeView } from "@/features/goals/derived";
 import { GoalPanel } from "@/features/goals/components/GoalPanel";
 import { PledgeRow } from "@/features/goals/components/PledgeRow";
+import { AbandonPledgeModal } from "@/features/goals/components/AbandonPledgeModal";
 import type { Trackable } from "@/features/trackables/api";
 import type { Goal } from "@/features/goals/api";
 
 export default function Stats() {
-  const { data: trackables, isLoading: loadingTrackables } = useTrackablesQuery();
-  const { data: completions, isLoading: loadingCompletions } = useCompletionsQuery();
-  const { data: goals } = useGoalsQuery();
-  const { data: coinBalance } = useCoinBalanceQuery();
+  const { data: trackables, isLoading: loadingTrackables, refetch: refetchTrackables } = useTrackablesQuery();
+  const { data: completions, isLoading: loadingCompletions, refetch: refetchCompletions } = useCompletionsQuery();
+  const { data: goals, refetch: refetchGoals } = useGoalsQuery();
+  const { data: coinBalance, refetch: refetchBalance } = useCoinBalanceQuery();
   const createPledgeMutation = useCreatePledge();
   const bankMutation = useBankCheckpoint();
   const settleMutation = useSettleGoal();
   const abandonMutation = useAbandonPledge();
   const [goalPanelFor, setGoalPanelFor] = useState<Trackable | null>(null);
+  // Giving up forfeits real coins, so it goes through a confirm that names the
+  // amounts rather than straight to the RPC.
+  const [abandonFor, setAbandonFor] = useState<{ trackable: Trackable; goalId: string; keeping: number; forfeiting: number } | null>(null);
 
   const isLoading = loadingTrackables || loadingCompletions;
   const allTrackables = trackables ?? [];
@@ -62,10 +66,28 @@ export default function Stats() {
 
   const onPledgeError = (verb: string) => (e: Error) => Alert.alert(`Couldn't ${verb}`, e.message);
 
+  // There was no way to refetch anything short of leaving the screen and coming
+  // back. Pledge progress in particular changes from elsewhere (completing a
+  // habit on Today), so a stale Stats screen is the normal case, not the edge.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetchTrackables(), refetchCompletions(), refetchGoals(), refetchBalance()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchTrackables, refetchCompletions, refetchGoals, refetchBalance]);
+
   return (
     <View style={styles.root}>
       <Halftone color={theme.color.ink} opacity={0.1} id="stats-bg" />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.color.violet} colors={[theme.color.violet]} />
+        }
+      >
         <View style={styles.headerRow}>
           <HardShadow style={styles.backBtn} onPress={() => router.back()} aria-label="Back">
             <ArrowLeft size={18} strokeWidth={2.5} color={theme.color.ink} />
@@ -86,7 +108,10 @@ export default function Stats() {
               </HardShadow>
               <HardShadow style={[styles.recordCard, { backgroundColor: theme.color.success }]}>
                 <Text style={styles.recordValue}>🪙 {totalCoinsEarned.toLocaleString()}</Text>
-                <Text style={styles.recordLabel}>Coins earned</Text>
+                {/* "Earned all-time", not the spendable balance in the header —
+                    two different numbers were both labelled with a bare coin
+                    icon, so neither told you which one it was. */}
+                <Text style={styles.recordLabel}>Earned all-time</Text>
               </HardShadow>
             </View>
 
@@ -167,9 +192,16 @@ export default function Stats() {
                       onSettle={() =>
                         gStatus && settleMutation.mutate(gStatus.goal.id, { onError: onPledgeError("close that out") })
                       }
-                      onAbandon={() =>
-                        gStatus && abandonMutation.mutate(gStatus.goal.id, { onError: onPledgeError("give that up") })
-                      }
+                      onAbandon={() => {
+                        if (!gStatus) return;
+                        const v = pledgeView(gStatus.goal, gStatus.progress);
+                        setAbandonFor({
+                          trackable: t,
+                          goalId: gStatus.goal.id,
+                          keeping: v.pendingPayout,
+                          forfeiting: v.atRisk,
+                        });
+                      }}
                     />
                   </View>
                 );
@@ -178,6 +210,21 @@ export default function Stats() {
           </>
         )}
       </ScrollView>
+
+      {abandonFor && (
+        <AbandonPledgeModal
+          visible
+          name={abandonFor.trackable.name}
+          keeping={abandonFor.keeping}
+          forfeiting={abandonFor.forfeiting}
+          onCancel={() => setAbandonFor(null)}
+          onConfirm={() => {
+            const { goalId } = abandonFor;
+            setAbandonFor(null);
+            abandonMutation.mutate(goalId, { onError: onPledgeError("give that up") });
+          }}
+        />
+      )}
 
       {goalPanelFor && (
         <GoalPanel

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert, RefreshControl } from "react-native";
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAddAction } from "@/features/navigation/addAction";
@@ -41,12 +41,12 @@ const LAPSED_DAYS_THRESHOLD = 3;
 type PanelState = { mode: "add" } | { mode: "edit"; trackable: Trackable } | null;
 
 export default function Home() {
-  const { data: trackables, isLoading, error } = useTrackablesQuery();
-  const { data: completions } = useCompletionsQuery();
+  const { data: trackables, isLoading, error, refetch: refetchTrackables } = useTrackablesQuery();
+  const { data: completions, refetch: refetchCompletions } = useCompletionsQuery();
   const { data: profile } = useProfileQuery();
   const { data: coinBalance } = useCoinBalanceQuery();
   const { data: freezeBalance } = useFreezeBalanceQuery();
-  const { data: goals } = useGoalsQuery();
+  const { data: goals, refetch: refetchGoals } = useGoalsQuery();
   const createMutation = useCreateTrackable();
   const updateMutation = useUpdateTrackable();
   const archiveMutation = useArchiveTrackable();
@@ -100,6 +100,20 @@ export default function Home() {
     if (atRisk === 0 && pending === 0) return null;
     return { count: active.length, atRisk, pending, bankable: pending > 0 };
   })();
+
+  // The only refresh path was backgrounding and reopening the app (which the
+  // AppState focusManager wiring handles). A deliberate pull is what people
+  // reach for when a number looks stale, and its absence reads as the app being
+  // out of date rather than the screen simply not having refetched.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetchTrackables(), refetchCompletions(), refetchGoals()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchTrackables, refetchCompletions, refetchGoals]);
 
   const setAddHandler = useAddAction((s) => s.setHandler);
   useFocusEffect(
@@ -194,7 +208,12 @@ export default function Home() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.color.violet} colors={[theme.color.violet]} />
+        }
+      >
         {isLoading && <ActivityIndicator style={{ marginTop: 40 }} />}
         {error && <Text style={styles.error}>Couldn't load your habits. Pull to retry.</Text>}
 

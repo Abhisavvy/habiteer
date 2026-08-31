@@ -5,10 +5,15 @@ import { theme } from "@/constants/theme";
 /**
  * Custom splash matching the app icon exactly (direction 1d — "Level-up H"):
  * same violet badge frame, paper-fill/ink-outline H, yellow cap — not a
- * simplified stand-in. The two legs rise into place ("ascending"), then the
- * yellow cap pops in, before handing off to the real app. Falls back to a
- * static (no-animation) render of the same icon when the OS reduce-motion
- * setting is on.
+ * simplified stand-in. The two legs rise into place ("ascending"), the crossbar
+ * reaches across to join them, then the yellow cap pops in, before handing off
+ * to the real app. Falls back to a static (no-animation) render of the same icon
+ * when the OS reduce-motion setting is on.
+ *
+ * The native pre-JS splash is deliberately the violet GROUND ONLY (see
+ * app.config.ts) so this can build the icon from nothing. It used to draw the
+ * finished icon, which made the handoff look like the icon shrinking and
+ * breaking apart before reassembling itself.
  *
  * Geometry is lifted directly from the icon's own SVG spec (gen-icon.js):
  * a 100x100 viewBox, badge inset 4 units with a 5-unit stroke, H decomposed
@@ -43,9 +48,17 @@ function px(r: { x0: number; x1: number; y0: number; y1: number }) {
 }
 
 export function AppSplash({ onDone }: { onDone: () => void }) {
+  // The mark arrives as an object, then assembles, then hands off. Each value
+  // is separate so the beats can overlap — a single timeline value would force
+  // them to be strictly sequential, which is what made the old version read as
+  // a checklist of animations rather than one movement.
+  const badgeScale = useRef(new Animated.Value(0.82)).current;
+  const badgeOpacity = useRef(new Animated.Value(0)).current;
   const leftScale = useRef(new Animated.Value(0)).current;
   const rightScale = useRef(new Animated.Value(0)).current;
+  const crossbarScale = useRef(new Animated.Value(0)).current;
   const capScale = useRef(new Animated.Value(0)).current;
+  const capLift = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(1)).current;
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
 
@@ -56,61 +69,120 @@ export function AppSplash({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     if (reduceMotion === null) return; // still checking
 
-    if (reduceMotion) {
-      // Static icon, brief hold, no animation — per the design's own note.
+    const settle = () => {
+      badgeScale.setValue(1);
+      badgeOpacity.setValue(1);
       leftScale.setValue(1);
       rightScale.setValue(1);
+      crossbarScale.setValue(1);
       capScale.setValue(1);
+      capLift.setValue(1);
+    };
+
+    if (reduceMotion) {
+      // Static mark, brief hold, then a plain fade — per the design's own note.
+      settle();
       const t = setTimeout(() => {
         Animated.timing(fade, { toValue: 0, duration: 150, useNativeDriver: true }).start(onDone);
       }, 300);
       return () => clearTimeout(t);
     }
 
-    // Tuned to land near the spec's 1200ms total (was ~700-800ms): slower
-    // leg rise + stagger, a slightly slower cap spring, and an explicit hold
-    // before the fade so the finished mark registers for a beat instead of
-    // starting to fade the instant it settles. Approximate, not measured —
-    // a spring's exact settle time isn't analytically predictable, and
-    // there's no device in this session to time it live.
-    Animated.sequence([
-      Animated.stagger(130, [
-        Animated.timing(leftScale, { toValue: 1, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        Animated.timing(rightScale, { toValue: 1, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      ]),
-      Animated.spring(capScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
-      Animated.delay(180),
-      Animated.timing(fade, { toValue: 0, duration: 220, useNativeDriver: true }),
-    ]).start(() => onDone());
+    // ~1250ms total, matching the spec's 1200ms brief.
+    //
+    // The beats OVERLAP deliberately. The badge is still settling when the legs
+    // start, and the cap fires before the crossbar has finished — that overlap
+    // is most of the difference between motion that feels designed and motion
+    // that feels like a sequence of tweens. Timings are staggered via delay
+    // inside parallel branches rather than a strict sequence, so nothing waits
+    // on a spring whose settle time can't be predicted exactly.
+    const animation = Animated.parallel([
+      // 1. The mark arrives — scales up from 0.82 with a little overshoot while
+      //    fading in. This is the beat that was missing entirely: the badge used
+      //    to simply exist from frame one.
+      Animated.timing(badgeOpacity, { toValue: 1, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.spring(badgeScale, { toValue: 1, friction: 7, tension: 90, useNativeDriver: true }),
 
-    // The splash is an OVERLAY on the whole app, so `onDone` must fire no
-    // matter what — it's the only thing that unmounts it. This previously read
-    // `({ finished }) => finished && onDone()`, and an RN Animated sequence
-    // reports finished: false whenever it's interrupted. Launching the app and
+      // 2. The legs rise, tightly staggered. Springs rather than timings so they
+      //    overshoot a touch and settle, instead of gliding to a dead stop.
+      Animated.sequence([
+        Animated.delay(140),
+        Animated.stagger(80, [
+          Animated.spring(leftScale, { toValue: 1, friction: 6.5, tension: 110, useNativeDriver: true }),
+          Animated.spring(rightScale, { toValue: 1, friction: 6.5, tension: 110, useNativeDriver: true }),
+        ]),
+      ]),
+
+      // 3. The crossbar reaches across to join them.
+      Animated.sequence([
+        Animated.delay(360),
+        Animated.timing(crossbarScale, { toValue: 1, duration: 170, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      ]),
+
+      // 4. The cap is the hero beat — it is the "level up" in the icon, so it
+      //    gets the bounciest spring and drops into place from slightly above
+      //    rather than merely scaling. Lands last, on its own, so the eye is on
+      //    it when the mark completes.
+      Animated.sequence([
+        Animated.delay(470),
+        Animated.parallel([
+          Animated.spring(capScale, { toValue: 1, friction: 5, tension: 150, useNativeDriver: true }),
+          Animated.spring(capLift, { toValue: 1, friction: 6, tension: 140, useNativeDriver: true }),
+        ]),
+      ]),
+
+      // 5. Hand off: the mark pushes very slightly toward the viewer as the
+      //    whole overlay fades. Scaling out on exit reads as the splash giving
+      //    way to the app; a bare opacity fade reads as it being switched off.
+      Animated.sequence([
+        Animated.delay(880),
+        Animated.parallel([
+          Animated.timing(badgeScale, { toValue: 1.07, duration: 300, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          Animated.timing(fade, { toValue: 0, duration: 280, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+        ]),
+      ]),
+    ]);
+
+    animation.start(() => onDone());
+
+    // The splash is an OVERLAY on the whole app, so `onDone` must fire no matter
+    // what — it is the only thing that unmounts it. This previously read
+    // `({ finished }) => finished && onDone()`, and an RN Animated composition
+    // reports finished: false whenever it is interrupted. Launching the app and
     // immediately backgrounding it (or, as observed on device, launching while
-    // the screen was asleep) interrupted the sequence, so onDone never fired
-    // and the app sat on the splash forever with no error and no way out but a
-    // force-quit. Calling onDone unconditionally is right: an interrupted
-    // splash animation is not a reason to withhold the app.
+    // the screen was asleep) interrupted it, so onDone never fired and the app
+    // sat on the splash forever with no error and no way out but a force-quit.
+    // An interrupted intro is not a reason to withhold the app.
     //
     // The timer is the belt to that braces: if the callback never runs at all
-    // (the animation never starts because the app is backgrounded before the
-    // driver picks it up), this still releases the overlay. Generous enough
-    // never to clip the ~1200ms choreography on a normal launch.
+    // because the driver never picked the animation up, this still releases the
+    // overlay. Generous enough never to clip the ~1250ms choreography.
     const failsafe = setTimeout(onDone, 2500);
-    return () => clearTimeout(failsafe);
+    return () => {
+      clearTimeout(failsafe);
+      animation.stop();
+    };
   }, [reduceMotion]);
 
   if (reduceMotion === null) return <View style={styles.root} />;
 
+  // Drops in from 6px above its resting position.
+  const capTranslateY = capLift.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] });
+
   return (
     <Animated.View style={[styles.root, { opacity: fade }]}>
-      <View style={styles.badge}>
+      <Animated.View
+        style={[styles.badge, { opacity: badgeOpacity, transform: [{ scale: badgeScale }] }]}
+      >
         <Animated.View style={[styles.leg, px(LEFT), { transform: [{ scaleY: leftScale }], transformOrigin: "bottom" }]} />
         <Animated.View style={[styles.leg, px(RIGHT), { transform: [{ scaleY: rightScale }], transformOrigin: "bottom" }]} />
-        <View style={[styles.crossbar, px(CROSSBAR)]} />
-        <Animated.View style={[styles.cap, px(CAP), { transform: [{ scale: capScale }] }]} />
-      </View>
+        <Animated.View
+          style={[styles.crossbar, px(CROSSBAR), { transform: [{ scaleX: crossbarScale }], transformOrigin: "left" }]}
+        />
+        <Animated.View
+          style={[styles.cap, px(CAP), { transform: [{ scale: capScale }, { translateY: capTranslateY }] }]}
+        />
+      </Animated.View>
     </Animated.View>
   );
 }
