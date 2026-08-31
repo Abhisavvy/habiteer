@@ -3029,3 +3029,37 @@ fatals. `adb install -r` preserved app data, so the session survived.
 
 Note for future device work: the phone now runs a release build, so Fast Refresh
 is gone. `npx expo run:android` swaps back to the dev build when needed.
+
+### Starter habit presets (done, device-verification pending)
+
+The highest-leverage item from the UX audit. A new account landed on an empty
+screen whose only way forward was a form asking for a name, emoji, difficulty,
+schedule, goal direction and reminder — six decisions before the first
+completion. `src/features/trackables/presets.ts` adds six one-tap starters and
+the empty state now leads with them: "Pick one to start / Tap any of these, or
+make your own", with "Make my own habit" kept as a link beneath.
+
+Presets: 💧 Drink water (easy), 🚶 Walk 20 minutes (easy), 📖 Read 10 pages
+(easy), 🧘 Meditate (medium), 🏋️ Exercise (hard), 📱 No late-night scrolling
+(medium, **reduce**).
+
+Three deliberate calls:
+- **Payouts are derived, never written.** `presetToFormValues` takes
+  `coinValue` from `DIFFICULTY_BASE`, and a test pins every preset to it. A
+  hardcoded coin value that drifted from its difficulty would quietly pay the
+  wrong rate forever — that is the one real invariant here, so it is the first
+  thing the tests check.
+- **One `reduce` preset**, so break-a-habit mode is discoverable. It is
+  otherwise buried in the add form's Goal control with nothing announcing it.
+- **No reminders on presets.** Asking for notification permission on someone's
+  first tap is the wrong trade.
+- Six, not twenty: enough to find a fit, few enough to scan. A wall of presets
+  is its own decision paralysis. Tests assert 4–8 and no duplicate names/emoji.
+
+Also asserted: every preset is daily with quota 1 and no weekday restriction, so
+it is due the moment it is created. A starter habit that left a new account still
+looking empty would defeat the whole point.
+
+4 new tests, red first. 148/148, tsc clean. NOT yet seen on device — the phone
+dropped off USB after the APK was built. The device account's habits were
+cleared so the empty state will show when it reconnects.

@@ -9,6 +9,8 @@ import { useTrackablesQuery, useCreateTrackable, useUpdateTrackable, useArchiveT
 import { filterDueToday, today } from "@/features/trackables/today";
 import { TrackableCard } from "@/features/trackables/components/TrackableCard";
 import { TrackablePanel } from "@/features/trackables/components/TrackablePanel";
+import { STARTER_HABITS, presetToFormValues } from "@/features/trackables/presets";
+import { DIFF_LIGHT_TINT } from "@/features/trackables/constants";
 import type { Trackable } from "@/features/trackables/api";
 import {
   useCompletionsQuery,
@@ -234,11 +236,35 @@ export default function Home() {
         {!isLoading && !error && trackables?.length === 0 && !panel && (
           <View style={styles.empty}>
             <IdleEmber size={72} />
-            <Text style={styles.emptyTitle}>No habits yet</Text>
-            <Text style={styles.emptyBody}>Add your first habit and start stacking streaks.</Text>
-            <HardShadow style={styles.emptyBtn} onPress={() => setPanel({ mode: "add" })}>
-              <Text style={styles.emptyBtnText}>＋ Add a habit</Text>
-            </HardShadow>
+            <Text style={styles.emptyTitle}>Pick one to start</Text>
+            <Text style={styles.emptyBody}>Tap any of these, or make your own.</Text>
+
+            {/* One-tap starters. The empty state used to offer only a form
+                asking for six decisions before the first completion — the point
+                here is that the first action costs a single tap. */}
+            <View style={styles.presetGrid}>
+              {STARTER_HABITS.map((preset) => (
+                <HardShadow
+                  key={preset.name}
+                  style={[styles.presetChip, { backgroundColor: DIFF_LIGHT_TINT[preset.difficulty] }]}
+                  disabled={createMutation.isPending}
+                  onPress={() =>
+                    createMutation.mutate(presetToFormValues(preset), {
+                      onError: (e) => Alert.alert("Couldn't add that", e.message),
+                    })
+                  }
+                >
+                  <Text style={styles.presetEmoji}>{preset.emoji}</Text>
+                  <Text style={styles.presetName} numberOfLines={2}>
+                    {preset.name}
+                  </Text>
+                </HardShadow>
+              ))}
+            </View>
+
+            <Pressable onPress={() => setPanel({ mode: "add" })}>
+              <Text style={styles.emptyCustomLink}>＋ Make my own habit</Text>
+            </Pressable>
           </View>
         )}
 
@@ -428,6 +454,47 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 16, fontWeight: "700", color: theme.color.ink, fontFamily: fonts.display700 },
   emptyBody: { fontSize: 12.5, lineHeight: 19, color: theme.color.ink, opacity: 0.6, textAlign: "center" },
+  presetGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  presetChip: {
+    width: "45%",
+    minHeight: 76,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderWidth: theme.borders.hairline,
+    borderColor: theme.color.ink,
+    borderRadius: 12,
+    shadowColor: theme.color.ink,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  presetEmoji: { fontSize: 26 },
+  presetName: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: theme.color.ink,
+    fontFamily: fonts.display600,
+    textAlign: "center",
+  },
+  emptyCustomLink: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: theme.color.violet,
+    fontFamily: fonts.mono700,
+    textDecorationLine: "underline",
+    marginTop: 10,
+  },
   emptyBtn: {
     marginTop: 4,
     height: 42,
